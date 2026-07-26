@@ -11,6 +11,9 @@
 
 enum class ECharacterClass : uint8;
 class UWidgetComponent;
+class AAuraAIController;
+class UBehaviorTree;
+
 /**
  * 
  */
@@ -22,6 +25,7 @@ class AURA_API AAuraEnemy : public ABaseCharacter, public IEnemyInterface
 public:
 	AAuraEnemy();
 	virtual void BeginPlay() override;
+	virtual void PossessedBy(AController* NewController) override;
 	
 	void HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	virtual void Die() override;
@@ -61,4 +65,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	float LifeSpan = 5.f;
+	
+	UPROPERTY(EditAnywhere, Category="AI")
+	TObjectPtr<UBehaviorTree> BehaviorTree;
+	
+	UPROPERTY()
+	TObjectPtr<AAuraAIController> AuraAIController;
 };
