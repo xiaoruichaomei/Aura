@@ -24,12 +24,21 @@ public:
 	virtual void BeginPlay() override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	UAttributeSet* GetAttributeSet() const { return AttributeSet; }
-	virtual FVector GetCombatSockettLocation() override;
+	
+	// <CombatInterface>
+	virtual FVector GetCombatSockettLocation_Implementation(const FGameplayTag& MontageTag) override;
+	virtual bool IsDead_Implementation() const override;
+	virtual AActor* GetAvatar_Implementation() override;
 	virtual UAnimMontage* GetHitReactMontage_Implementation() override;
 	virtual void Die() override;
+	virtual TArray<FTaggedMontage> GetAttackMontages_Implementation() override;
+	// </CombatInterface>
 	
 	UFUNCTION(NetMulticast, Reliable)
 	virtual void MulticastHandleDeath();
+	
+	UPROPERTY(EditAnywhere, Category="Combat")
+	TArray<FTaggedMontage> AttackMontages;
 
 protected:
 	virtual void InitAbilityActorInfo();
@@ -48,6 +57,12 @@ protected:
 	
 	UPROPERTY(EditAnywhere, Category="Combat")
 	FName WeaponTipSocketName;
+	
+	UPROPERTY(EditAnywhere, Category="Combat")
+	FName RightHandTipSocketName;
+	
+	UPROPERTY(EditAnywhere, Category="Combat")
+	FName LeftHandTipSocketName;
 	
 	UPROPERTY()
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
@@ -71,6 +86,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TObjectPtr<UMaterialInstance> WeaponDissolveMaterialInstance;
 	// </Dissolve Effects>
+	
+	bool bDead = false;
 	
 private:
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GameplayEffectClass, float Level) const;

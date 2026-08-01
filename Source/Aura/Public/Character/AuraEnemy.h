@@ -36,6 +36,8 @@ public:
 	
 	// <Combat Interface>
 	virtual int32 GetLevel() override;
+	virtual void SetCombatTarget_Implementation(AActor* InCombatTarget) override;
+	virtual AActor* GetCombatTarget_Implementation() const override;
 	// </Combat Interface>
 	
 	UPROPERTY(BlueprintAssignable)
@@ -60,7 +62,7 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category="Combat")
 	bool bHitReacting = false;
 
-	UPROPERTY(BlueprintReadOnly, Category="Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	float BaseWalkSpeed = 250.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
@@ -71,4 +73,7 @@ protected:
 	
 	UPROPERTY()
 	TObjectPtr<AAuraAIController> AuraAIController;
+	
+	UPROPERTY(BlueprintReadWrite, Category="Combat")
+	TObjectPtr<AActor> CombatTarget;
 };
