@@ -51,6 +51,7 @@ void AAuraProjectile::Destroyed()
 		{
 			FlySoundComponent->Stop();
 		}
+		bHit = true;
 	}
 	
 	Super::Destroyed();
@@ -76,6 +77,7 @@ void AAuraProjectile::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, 
 		{
 			FlySoundComponent->Stop();
 		}
+		bHit = true;
 	}
 	
 	if (HasAuthority())

@@ -8,6 +8,7 @@
 #include "Interface/CombatInterface.h"
 #include "BaseCharacter.generated.h"
 
+class UNiagaraSystem;
 class UMaterialInstance;
 class UGameplayAbility;
 class UAbilitySystemComponent;
@@ -32,6 +33,8 @@ public:
 	virtual UAnimMontage* GetHitReactMontage_Implementation() override;
 	virtual void Die() override;
 	virtual TArray<FTaggedMontage> GetAttackMontages_Implementation() override;
+	virtual UNiagaraSystem* GetBloodEffect_Implementation() override;
+	virtual FTaggedMontage GetTaggedMontageByTag_Implementation(const FGameplayTag& Tag) override;
 	// </CombatInterface>
 	
 	UFUNCTION(NetMulticast, Reliable)
@@ -88,6 +91,12 @@ protected:
 	// </Dissolve Effects>
 	
 	bool bDead = false;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
+	UNiagaraSystem* BloodEffect;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
+	USoundBase* DeathSound;
 	
 private:
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GameplayEffectClass, float Level) const;
