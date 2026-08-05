@@ -35,6 +35,8 @@ public:
 	virtual TArray<FTaggedMontage> GetAttackMontages_Implementation() override;
 	virtual UNiagaraSystem* GetBloodEffect_Implementation() override;
 	virtual FTaggedMontage GetTaggedMontageByTag_Implementation(const FGameplayTag& Tag) override;
+	virtual int32 GetMinionsLimit_Implementation() override;
+	virtual void IncrementMinionCount_Implementation(int32 Amount) override;
 	// </CombatInterface>
 	
 	UFUNCTION(NetMulticast, Reliable)
@@ -67,6 +69,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Combat")
 	FName LeftHandTipSocketName;
 	
+	UPROPERTY(EditAnywhere, Category="Combat")
+	FName TailSocketName;
+
 	UPROPERTY()
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 
@@ -97,6 +102,8 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	USoundBase* DeathSound;
+	
+	int32 MinionsCount = 0;
 	
 private:
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GameplayEffectClass, float Level) const;

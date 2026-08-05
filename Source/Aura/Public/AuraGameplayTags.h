@@ -51,10 +51,12 @@ public:
 	FGameplayTag Damage_Physical;
 	
 	FGameplayTag Abilities_Attack;
+	FGameplayTag Abilities_Summon;
 	
 	FGameplayTag CombatSocket_Weapon;
 	FGameplayTag CombatSocket_RightHand;
 	FGameplayTag CombatSocket_LeftHand;
+	FGameplayTag CombatSocket_Tail;
 	
 	TMap<FGameplayTag, FGameplayTag> DamageTypesToResistance;
 	

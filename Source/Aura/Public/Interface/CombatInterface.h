@@ -22,7 +22,7 @@ struct FTaggedMontage
 	FGameplayTag MontageTag;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	FGameplayTag SocketTage;
+	FGameplayTag SocketTag;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	USoundBase* ImpactSound = nullptr;
@@ -69,4 +69,10 @@ public:
 	
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	FTaggedMontage GetTaggedMontageByTag(const FGameplayTag& Tag);
+	
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
+	int32 GetMinionsLimit();
+	
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
+	void IncrementMinionCount(int32 Amount);
 };

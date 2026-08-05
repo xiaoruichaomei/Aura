@@ -167,6 +167,11 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Attack Ability Tag")
 		);
 	
+	GameplayTags.Abilities_Summon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Summon"), 
+		FString("Summon Ability Tag")
+		);
+	
 	GameplayTags.CombatSocket_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("CombatSocket.Weapon"), 
 		FString("Weapon")
@@ -180,6 +185,11 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTags.CombatSocket_LeftHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("CombatSocket.LeftHand"), 
 		FString("LeftHand")
+		);
+	
+	GameplayTags.CombatSocket_Tail = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("CombatSocket.Tail"), 
+		FString("Tail")
 		);
 	
 	GameplayTags.Montage_Attack_1 = UGameplayTagsManager::Get().AddNativeGameplayTag(
