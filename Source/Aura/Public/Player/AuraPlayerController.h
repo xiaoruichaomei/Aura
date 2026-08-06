@@ -82,7 +82,9 @@ private:
 	// <相机控制>
 	mutable FVector FixedCameraLocation;
 	mutable FRotator FixedCameraRotation;
-	
+
+	void UpdateFixedCameraToPlayer();
+
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> CameraSnapAction;
 	// </相机控制>

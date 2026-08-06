@@ -10,7 +10,6 @@
 #include "AbilitySystem/AuraAttributeSet.h"
 #include "AbilitySystem/Data/CharacterClassInfo.h"
 #include "Interface/CombatInterface.h"
-#include "Kismet/KismetMathLibrary.h"
 
 struct AuraDamageStatics
 {

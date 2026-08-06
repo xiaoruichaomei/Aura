@@ -4,7 +4,6 @@
 #include "Player/AuraPlayerController.h"
 
 #include "AuraGameplayTags.h"
-#include "DrawDebugHelpers.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
@@ -15,6 +14,7 @@
 #include "NavigationPath.h"
 #include "NavigationSystem.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
+#include "Camera/CameraComponent.h"
 #include "Components/SplineComponent.h"
 #include "Engine/Engine.h"
 #include "Input/AuraInputComponent.h"
@@ -64,14 +64,8 @@ void AAuraPlayerController::BeginPlay()
 	InputModeData.SetHideCursorDuringCapture(false);
 	SetInputMode(InputModeData);
 	
-	// 初始化固定相机位置
-	if (APawn* ControlledPawn = GetPawn())
-	{
-		FVector PlayerLocation = ControlledPawn->GetActorLocation();
-		FVector CameraOffset(-600.f, 0.f, 800.f);
-		FixedCameraLocation = PlayerLocation + CameraOffset;
-		FixedCameraRotation = (PlayerLocation - FixedCameraLocation).Rotation();
-	}
+	// 初始化固定相机：直接用玩家身上的相机位置
+	UpdateFixedCameraToPlayer();
 }
 
 void AAuraPlayerController::SetupInputComponent()
@@ -234,16 +228,19 @@ void AAuraPlayerController::AutoRun()
 
 void AAuraPlayerController::SnapCameraToPlayer()
 {
+	// 按下空格：把相机拉到玩家当前相机位置
+	UpdateFixedCameraToPlayer();
+}
+
+void AAuraPlayerController::UpdateFixedCameraToPlayer()
+{
 	if (APawn* ControlledPawn = GetPawn())
 	{
-		FVector PlayerLocation = ControlledPawn->GetActorLocation();
-
-		// 相机放在玩家后上方
-		FVector CameraOffset(-600.f, 0.f, 800.f);
-		FixedCameraLocation = PlayerLocation + CameraOffset;
-
-		// 计算看向玩家的旋转
-		FixedCameraRotation = (PlayerLocation - FixedCameraLocation).Rotation();
+		if (UCameraComponent* PlayerCamera = ControlledPawn->FindComponentByClass<UCameraComponent>())
+		{
+			FixedCameraLocation = PlayerCamera->GetComponentLocation();
+			FixedCameraRotation = PlayerCamera->GetComponentRotation();
+		}
 	}
 }
 
