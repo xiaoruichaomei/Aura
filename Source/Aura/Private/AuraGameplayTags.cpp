@@ -107,6 +107,11 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Input Tag for Key 4")
 		);
 	
+	GameplayTags.Input_R = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Input.R"), 
+		FString("Input Tag for Key R")
+		);
+	
 	GameplayTags.Damage = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Damage"), 
 		FString("Damage")
@@ -170,6 +175,16 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTags.Abilities_Summon = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Abilities.Summon"), 
 		FString("Summon Ability Tag")
+		);
+	
+	GameplayTags.Abilities_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Fire.FireBolt"), 
+		FString("FireBolt Ability Tag")
+		);
+	
+	GameplayTags.Cooldown_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Cooldown.Fire.FireBolt"), 
+		FString("FireBolt Cooldown Tag")
 		);
 	
 	GameplayTags.CombatSocket_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(

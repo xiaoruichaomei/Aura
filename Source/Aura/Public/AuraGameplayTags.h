@@ -43,6 +43,7 @@ public:
 	FGameplayTag Input_2;
 	FGameplayTag Input_3;
 	FGameplayTag Input_4;
+	FGameplayTag Input_R;
 	
 	FGameplayTag Damage;
 	FGameplayTag Damage_Fire;
@@ -52,6 +53,10 @@ public:
 	
 	FGameplayTag Abilities_Attack;
 	FGameplayTag Abilities_Summon;
+	
+	FGameplayTag Abilities_Fire_FireBolt;
+	
+	FGameplayTag Cooldown_Fire_FireBolt;
 	
 	FGameplayTag CombatSocket_Weapon;
 	FGameplayTag CombatSocket_RightHand;
