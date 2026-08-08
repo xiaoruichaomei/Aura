@@ -35,7 +35,7 @@ public:
 	// </Enemy Interface>
 	
 	// <Combat Interface>
-	virtual int32 GetLevel() override;
+	virtual int32 GetLevel_Implementation() override;
 	virtual void SetCombatTarget_Implementation(AActor* InCombatTarget) override;
 	virtual AActor* GetCombatTarget_Implementation() const override;
 	// </Combat Interface>
@@ -52,9 +52,6 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Class Defaults")
 	int32 Level = 1;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Class Defaults")
-	ECharacterClass CharacterClass = ECharacterClass::Warrior;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UWidgetComponent> HealthBar;

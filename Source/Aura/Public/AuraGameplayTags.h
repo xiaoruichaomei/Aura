@@ -36,6 +36,7 @@ public:
 	FGameplayTag Attributes_Resistance_Arcane;
 	FGameplayTag Attributes_Resistance_Physical;
 	
+	FGameplayTag Attributes_Meta_InComingXP;
 	
 	FGameplayTag Input_LMB;
 	FGameplayTag Input_RMB;

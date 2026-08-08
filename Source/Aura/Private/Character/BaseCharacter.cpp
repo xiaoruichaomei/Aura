@@ -85,6 +85,11 @@ void ABaseCharacter::IncrementMinionCount_Implementation(int32 Amount)
 	MinionsCount += Amount ;
 }
 
+ECharacterClass ABaseCharacter::GetCharacterClass_Implementation()
+{
+	return CharacterClass;
+}
+
 void ABaseCharacter::MulticastHandleDeath_Implementation()
 {
 	UGameplayStatics::PlaySoundAtLocation(this, DeathSound, GetActorLocation(), GetActorRotation());
@@ -123,7 +128,7 @@ void ABaseCharacter::AddCharacterAbilities()
 	
 	UAuraAbilitySystemComponent* AuraASC = CastChecked<UAuraAbilitySystemComponent>(AbilitySystemComponent);
 	
-	AuraASC->AddCharacterAbilities(StartupAbility);
+	AuraASC->AddCharacterAbilities(StartupAbility, PassiveAbility);
 }
 
 void ABaseCharacter::Dissolve()

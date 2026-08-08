@@ -214,8 +214,13 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category="Meta Attributes")
 	FGameplayAttributeData IncomingDamage;
 	ATTRIBUTE_ACCESSORS_BASIC(UAuraAttributeSet, IncomingDamage);
+	
+	UPROPERTY(BlueprintReadOnly, Category="Meta Attributes")
+	FGameplayAttributeData IncomingXP;
+	ATTRIBUTE_ACCESSORS_BASIC(UAuraAttributeSet, IncomingXP);
 	// </Meta Attribute>
 	
 private:
 	void SetEffectProperties(const FGameplayEffectModCallbackData& Data, FEffectProperties& Props) const;
+	void SendXPEvent(const FEffectProperties& Props);
 };
