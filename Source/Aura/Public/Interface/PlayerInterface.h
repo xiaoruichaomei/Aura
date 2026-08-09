@@ -47,5 +47,11 @@ public:
 	void AddToAttributePoints(int32 AttributePoints);
 	
 	UFUNCTION(BlueprintNativeEvent)
+	int32 GetAttributePoints() const;
+	
+	UFUNCTION(BlueprintNativeEvent)
 	void AddToSpellPoints(int32 SpellPoints);
+	
+	UFUNCTION(BlueprintNativeEvent)
+	int32 GetSpellPoints() const;
 };
