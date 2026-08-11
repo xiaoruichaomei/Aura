@@ -84,6 +84,11 @@ int32 AAuraCharacter::GetSpellPointsReward_Implementation(int32 Level) const
 void AAuraCharacter::AddToPlayerLevel_Implementation(int32 Level)
 {
 	GetAuraPlayerState()->AddToLevel(Level);
+	
+	if (UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(GetAbilitySystemComponent()))
+	{
+		AuraASC->UpdateAbilityStatus(GetAuraPlayerState()->GetPlayerLevel());
+	}
 }
 
 void AAuraCharacter::AddToAttributePoints_Implementation(int32 AttributePoints)
