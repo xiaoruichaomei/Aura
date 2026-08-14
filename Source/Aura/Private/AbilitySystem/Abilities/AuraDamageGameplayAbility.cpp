@@ -28,3 +28,14 @@ FTaggedMontage UAuraDamageGameplayAbility::GetRandomTaggedMontageFromArray(const
 	
 	return FTaggedMontage();
 }
+
+FString UAuraDamageGameplayAbility::GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo)
+{
+	FString Description = Super::GetResolvedDescription(Level, AbilityInfo);
+	int32 TotalDamage = 0;
+	for (const TTuple<FGameplayTag, FScalableFloat>& Pair : DamageType)
+	{
+		TotalDamage += FMath::RoundToInt(Pair.Value.GetValueAtLevel(Level));
+	}
+	return Description.Replace(TEXT("{Damage}"), *FString::FromInt(TotalDamage));
+}

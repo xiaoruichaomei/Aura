@@ -74,13 +74,6 @@ void UAuraAbilitySystemLibrary::InitializeDefaultAttributes(const UObject* World
 	UCharacterClassInfo* CharacterClassInfo = GetCharacterClassInfo(WorldContextObject);
 	const FCharacterClassDefaultInfo ClassDefaultInfo = CharacterClassInfo->GetClassDefaultInfo(CharacterClass);
 	
-	// ==== 第一步：检查数据 ====
-	UE_LOG(LogTemp, Warning, TEXT("CharacterClassInfo valid: %d"), CharacterClassInfo ? 1 : 0);
-	UE_LOG(LogTemp, Warning, TEXT("Primary GE: %s"), *GetNameSafe(ClassDefaultInfo.PrimaryAttributes));
-	UE_LOG(LogTemp, Warning, TEXT("Secondary GE: %s"), *GetNameSafe(CharacterClassInfo->SecondaryAttributes));
-	UE_LOG(LogTemp, Warning, TEXT("Vital GE: %s"), *GetNameSafe(CharacterClassInfo->VitalAttributes));
-
-	
 	const AActor* AvatarActor = ASC->GetAvatarActor();
 	FGameplayEffectContextHandle AttributesContextHandle = ASC->MakeEffectContext();
 	AttributesContextHandle.AddSourceObject(AvatarActor);
@@ -93,19 +86,6 @@ void UAuraAbilitySystemLibrary::InitializeDefaultAttributes(const UObject* World
 	
 	const FGameplayEffectSpecHandle VitalAttributesSpecHandle = ASC->MakeOutgoingSpec(CharacterClassInfo->VitalAttributes, Level, AttributesContextHandle);
 	ASC->ApplyGameplayEffectSpecToSelf(*VitalAttributesSpecHandle.Data.Get());
-	
-	// ==== 第二步：检查 Spec 是否有效 ====
-	UE_LOG(LogTemp, Warning, TEXT("Vital Spec valid: %d, Data valid: %d"),
-		   VitalAttributesSpecHandle.IsValid(),
-		   VitalAttributesSpecHandle.Data.IsValid() ? 1 : 0);
-	if (VitalAttributesSpecHandle.Data.IsValid())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Vital Def: %s"), *GetNameSafe(VitalAttributesSpecHandle.Data->Def));
-	}
-
-	// ==== 第三步：检查 Apply 是否成功 ====
-	FActiveGameplayEffectHandle VitalHandle = ASC->ApplyGameplayEffectSpecToSelf(*VitalAttributesSpecHandle.Data.Get());
-	UE_LOG(LogTemp, Warning, TEXT("Vital GE applied: %s"), VitalHandle.WasSuccessfullyApplied() ? TEXT("YES") : TEXT("NO"));
 }
 
 void UAuraAbilitySystemLibrary::GiveStartupAbilities(const UObject* WorldContextObject, UAbilitySystemComponent* ASC, ECharacterClass CharacterClass)

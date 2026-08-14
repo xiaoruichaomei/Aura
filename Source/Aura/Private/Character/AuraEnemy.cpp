@@ -56,8 +56,6 @@ void AAuraEnemy::BeginPlay()
 	
 	if (const UAuraAttributeSet* AuraAS = Cast<UAuraAttributeSet>(AttributeSet))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Enemy MaxHealth: %f, Health: %f"), 
-		   AuraAS->GetMaxHealth(), AuraAS->GetHealth());
 		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetHealthAttribute()).AddLambda(
 			[this](const FOnAttributeChangeData& Data)
 			{

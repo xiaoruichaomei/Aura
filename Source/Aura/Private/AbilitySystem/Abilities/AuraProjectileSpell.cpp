@@ -11,6 +11,12 @@
 #include "GameFramework/Pawn.h"
 #include "Interface/CombatInterface.h"
 
+FString UAuraProjectileSpell::GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo)
+{
+	FString Description = Super::GetResolvedDescription(Level, AbilityInfo);
+	return Description.Replace(TEXT("{NumProjectiles}"), *FString::FromInt(FMath::Min(Level, NumProjectiles)));
+}
+
 void UAuraProjectileSpell::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
+#include "AbilitySystem/Data/AbilityInfo.h"
 #include "AuraGameplayAbility.generated.h"
 
 /**
@@ -16,4 +17,15 @@ class AURA_API UAuraGameplayAbility : public UGameplayAbility
 public:
 	UPROPERTY(EditDefaultsOnly, Category="Input")
 	FGameplayTag StartupInputTag;
+
+	virtual FString GetDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo);
+	virtual FString GetNextLevelDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo);
+	static FString GetLockedDescription(int32 Level);
+	static FString GetUnlockDescription();
+
+protected:
+	virtual FString GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo);
+	
+	int32 GetManaCost(int32 Level = 1.f) const;
+	float GetCooldown(int32 Level = 1.f) const;
 };
