@@ -49,6 +49,9 @@ private:
 	void AbilityInputTagReleased(FGameplayTag InputTag);
 	void AbilityInputTagHeld(FGameplayTag InputTag);
 	void AutoRun();
+
+	/** 玩家身上是否有 Player.Block 标签（如施法期间阻塞移动） */
+	bool IsInputBlocked() const;
 	
 	void SnapCameraToPlayer();
 	

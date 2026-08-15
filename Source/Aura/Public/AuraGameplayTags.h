@@ -88,6 +88,8 @@ public:
 
 	FGameplayTag Effects_HitReact;
 
+	FGameplayTag Player_Block;
+
 	FGameplayTag Effects_Debuff;
 	FGameplayTag Effects_Debuff_Burn;
 	FGameplayTag Effects_Debuff_Stun;

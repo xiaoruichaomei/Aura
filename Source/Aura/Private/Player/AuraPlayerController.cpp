@@ -3,6 +3,7 @@
 
 #include "Player/AuraPlayerController.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "AuraGameplayTags.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -129,10 +130,27 @@ void AAuraPlayerController::MulticastSpawnClickEffect_Implementation(const FVect
 	}
 }
 
+bool AAuraPlayerController::IsInputBlocked() const
+{
+	if (APawn* ControlledPawn = GetPawn())
+	{
+		if (UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn))
+		{
+			return ASC->HasMatchingGameplayTag(FAuraGameplayTags::Get().Player_Block);
+		}
+	}
+	return false;
+}
+
 void AAuraPlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 {
 	if (InputTag.MatchesTagExact(FAuraGameplayTags::Get().Input_RMB))
 	{
+		if (IsInputBlocked())
+		{
+			return;
+		}
+
 		bTargeting = ThisActor ? true : false;
 		bAutoRunning = false;
 
@@ -164,6 +182,11 @@ void AAuraPlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 	}
 	else
 	{
+		if (IsInputBlocked())
+		{
+			return;
+		}
+
 		APawn* ControlledPawn = GetPawn();
 		if (ControlledPawn && FollowTime <= ShortPressThreshold)
 		{
@@ -206,13 +229,18 @@ void AAuraPlayerController::AbilityInputTagHeld(FGameplayTag InputTag)
 	}
 	else
 	{
+		if (IsInputBlocked())
+		{
+			return;
+		}
+
 		FollowTime += GetWorld()->GetDeltaSeconds();
-		
+
 		if (CursorHit.bBlockingHit)
 		{
 			CachedDestination = CursorHit.ImpactPoint;
 		}
-		
+
 		APawn* ControlledPawn = GetPawn();
 		if (ControlledPawn)
 		{
@@ -224,7 +252,7 @@ void AAuraPlayerController::AbilityInputTagHeld(FGameplayTag InputTag)
 
 void AAuraPlayerController::AutoRun()
 {
-	if (!bAutoRunning)
+	if (!bAutoRunning || IsInputBlocked())
 	{
 		return;
 	}

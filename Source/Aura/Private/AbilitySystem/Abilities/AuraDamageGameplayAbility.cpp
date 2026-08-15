@@ -11,6 +11,11 @@
 
 FGameplayEffectSpecHandle UAuraDamageGameplayAbility::MakeDamageEffectSpec(const FAuraDamageEffectParams& Params) const
 {
+	if (!Params.DamageEffectClass || !IsValid(GetAbilitySystemComponentFromActorInfo()))
+	{
+		return FGameplayEffectSpecHandle();
+	}
+
 	FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponentFromActorInfo()->MakeEffectContext();
 	ContextHandle.SetAbility(this);
 	ContextHandle.AddSourceObject(Params.SourceObject);
@@ -36,14 +41,29 @@ FGameplayEffectSpecHandle UAuraDamageGameplayAbility::MakeDamageEffectSpec(const
 
 void UAuraDamageGameplayAbility::CauseDamage(AActor* TargetActor)
 {
+	if (!TargetActor || !IsValid(GetAbilitySystemComponentFromActorInfo()))
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
+	if (!TargetASC)
+	{
+		return;
+	}
+
 	FAuraDamageEffectParams Params = DamageEffectParams;
 	const FVector Direction = (TargetActor->GetActorLocation() - GetAvatarActorFromActorInfo()->GetActorLocation()).GetSafeNormal2D();
 	// 加一点 Z 上抛分量：纯水平冲量会被倒地尸体与地面的摩擦吸收，几乎看不到
 	Params.DeathImpulse = Direction * Params.DeathImpulseMagnitude + FVector(0.f, 0.f, Params.DeathImpulseMagnitude * 0.3f);
 
 	const FGameplayEffectSpecHandle DamageSpecHandle = MakeDamageEffectSpec(Params);
+	if (!DamageSpecHandle.Data.IsValid() || !DamageSpecHandle.Data->Def)
+	{
+		return;
+	}
 
-	GetAbilitySystemComponentFromActorInfo()->ApplyGameplayEffectSpecToTarget(*DamageSpecHandle.Data.Get(), UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor));
+	GetAbilitySystemComponentFromActorInfo()->ApplyGameplayEffectSpecToTarget(*DamageSpecHandle.Data.Get(), TargetASC);
 }
 
 FTaggedMontage UAuraDamageGameplayAbility::GetRandomTaggedMontageFromArray(const TArray<FTaggedMontage>& TaggedMontages)

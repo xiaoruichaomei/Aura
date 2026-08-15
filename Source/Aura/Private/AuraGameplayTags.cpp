@@ -184,6 +184,11 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Tag Granted when Hit React")
 		);
 
+	GameplayTags.Player_Block = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Player.Block"),
+		FString("Blocks the player's movement and other abilities (e.g. while channeling)")
+		);
+
 	GameplayTags.Effects_Debuff = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Effects.Debuff"),
 		FString("Debuff")
