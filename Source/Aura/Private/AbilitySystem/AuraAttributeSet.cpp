@@ -246,16 +246,20 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 			
 			if (TimesOfLevelUp > 0)
 			{
-				const int32 AttributePointsReward = IPlayerInterface::Execute_GetAttributePointsReward(Props.SourceCharacter, CurrentLevel);
-				const int32 SpellPointsReward = IPlayerInterface::Execute_GetSpellPointsReward(Props.SourceCharacter, CurrentLevel);
-				
+				// 每升一级各给一次奖励（一次升多级时不能只给一次）
+				for (int32 i = CurrentLevel; i < NewLevel; ++i)
+				{
+					const int32 AttributePointsReward = IPlayerInterface::Execute_GetAttributePointsReward(Props.SourceCharacter, i);
+					const int32 SpellPointsReward = IPlayerInterface::Execute_GetSpellPointsReward(Props.SourceCharacter, i);
+					IPlayerInterface::Execute_AddToAttributePoints(Props.SourceCharacter, AttributePointsReward);
+					IPlayerInterface::Execute_AddToSpellPoints(Props.SourceCharacter, SpellPointsReward);
+				}
+
 				IPlayerInterface::Execute_AddToPlayerLevel(Props.SourceCharacter, TimesOfLevelUp);
-				IPlayerInterface::Execute_AddToAttributePoints(Props.SourceCharacter, AttributePointsReward);
-				IPlayerInterface::Execute_AddToSpellPoints(Props.SourceCharacter, SpellPointsReward);
-				
+
 				bTopOffHealth = true;
 				bTopOffMana = true;
-				
+
 				IPlayerInterface::Execute_LevelUp(Props.SourceCharacter);
 			}
 				
