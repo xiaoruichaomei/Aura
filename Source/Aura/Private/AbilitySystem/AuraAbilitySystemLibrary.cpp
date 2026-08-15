@@ -5,6 +5,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "AuraAbilityTypes.h"
+#include "AbilitySystem/Data/AbilityInfo.h"
 #include "AbilitySystem/Data/CharacterClassInfo.h"
 #include "Engine/Engine.h"
 #include "Engine/OverlapResult.h"
@@ -124,11 +125,15 @@ UCharacterClassInfo* UAuraAbilitySystemLibrary::GetCharacterClassInfo(const UObj
 UAbilityInfo* UAuraAbilitySystemLibrary::GetAbilityInfo(const UObject* WorldContextObject)
 {
 	const AAuraGameModeBase* AuraGameMode = Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(WorldContextObject));
-	if (!AuraGameMode)
+	if (AuraGameMode)
 	{
-		return nullptr;
+		return AuraGameMode->AbilityInfo;
 	}
-	return AuraGameMode->AbilityInfo;
+
+	// 客户端没有 GameMode（GetGameMode 只在服务器返回有效值）：
+	// 直接加载 AbilityInfo 数据资产，避免返回 nullptr 导致下游空指针。
+	static const TCHAR* AbilityInfoPath = TEXT("/Game/Blueprints/AbilitySystem/Data/DA_AbilityInfo.DA_AbilityInfo");
+	return LoadObject<UAbilityInfo>(nullptr, AbilityInfoPath);
 }
 
 bool UAuraAbilitySystemLibrary::IsBlockedHit(const FGameplayEffectContextHandle& EffectContextHandle)

@@ -19,6 +19,7 @@
 #include "Engine/Engine.h"
 #include "Input/AuraInputComponent.h"
 #include "GameFramework/Character.h"
+#include "NiagaraFunctionLibrary.h"
 #include "UI/Widget/DamageTextComponent.h"
 
 AAuraPlayerController::AAuraPlayerController()
@@ -119,12 +120,27 @@ void AAuraPlayerController::CursorTrace()
 	}
 }
 
+void AAuraPlayerController::MulticastSpawnClickEffect_Implementation(const FVector& CursorLocation)
+{
+	if (ClickNiagaraSystem)
+	{
+		// bAutoDestroy 默认为 true：特效播完自动销毁
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ClickNiagaraSystem, CursorLocation);
+	}
+}
+
 void AAuraPlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 {
 	if (InputTag.MatchesTagExact(FAuraGameplayTags::Get().Input_RMB))
 	{
 		bTargeting = ThisActor ? true : false;
 		bAutoRunning = false;
+
+		// 点击地面（移动或施法）时在所有端生成点击特效
+		if (CursorHit.bBlockingHit)
+		{
+			MulticastSpawnClickEffect(CursorHit.ImpactPoint);
+		}
 	}
 }
 

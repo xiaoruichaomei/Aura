@@ -10,6 +10,7 @@ class UDamageTextComponent;
 class UAuraInputConfig;
 class UInputMappingContext;
 class UInputAction;
+class UNiagaraSystem;
 class IEnemyInterface;
 class UAuraAbilitySystemComponent;
 class USplineComponent;
@@ -31,6 +32,10 @@ public:
 	
 	UFUNCTION(Client, Reliable)
 	void ShowDamageNumber(float DamageAmount, ACharacter* TargetCharacter, bool bBlockedHit, bool bCriticalHit);
+
+	/** 在所有客户端生成点击地面特效（点击移动/施法时） */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastSpawnClickEffect(const FVector& CursorLocation);
 
 protected:
 	virtual void BeginPlay() override;
@@ -91,4 +96,7 @@ private:
 	
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<UDamageTextComponent> DamageTextComponentClass;
+
+	UPROPERTY(EditDefaultsOnly, Category="Click")
+	TObjectPtr<UNiagaraSystem> ClickNiagaraSystem;
 };
