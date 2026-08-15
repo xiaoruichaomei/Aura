@@ -3,10 +3,14 @@
 
 #include "AbilitySystem/AuraAttributeSet.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AIController.h"
+#include "GameplayEffect.h"
 #include "GameplayEffectExtension.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "Navigation/PathFollowingComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "AuraGameplayTags.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
@@ -102,28 +106,114 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 	{
 		const float LocalIncomingDamage = GetIncomingDamage();
 		SetIncomingDamage(0.f);
+
+		// 目标已死亡：忽略后续伤害（例如死亡后仍在 tick 的燃烧），
+		// 防止重复触发 Die() 和 SendXPEvent。
+		if (Props.TargetAvatarActor && Props.TargetAvatarActor->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(Props.TargetAvatarActor))
+		{
+			return;
+		}
+
 		if (LocalIncomingDamage > 0.f)
 		{
+			const FAuraGameplayTags& Tags = FAuraGameplayTags::Get();
+
+			// 防递归 + 防硬直门控：燃烧 tick 的 GE 带 Effects.Debuff 资产标签，普通伤害 GE_Damage 不带。
+			FGameplayTagContainer EffectAssetTags;
+			Data.EffectSpec.GetAllAssetTags(EffectAssetTags);
+			const bool bIsDebuffEffect = EffectAssetTags.HasTag(Tags.Effects_Debuff);
+			const bool bIsDebuffHit = UAuraAbilitySystemLibrary::IsDebuff(Props.EffectContextHandle);
+
 			const float NewHealth = GetHealth() - LocalIncomingDamage;
 			SetHealth(FMath::Clamp(NewHealth, 0.f, NewHealth));
-			
+
 			const bool bFatal = NewHealth <= 0.f;
 			if (bFatal)
 			{
+				// 目标死亡：移除其身上的所有 debuff，避免死亡后继续 tick（也会随之停止施加/刷经验）
+				FGameplayTagContainer DebuffTags;
+				DebuffTags.AddTag(Tags.Effects_Debuff);
+				Props.TargetASC->RemoveActiveEffectsWithTags(DebuffTags);
+
 				ICombatInterface* CombatInterface = Cast<ICombatInterface>(Props.TargetAvatarActor);
 				if (CombatInterface)
 				{
+					// 只有直接命中的致死才把尸体击飞；燃烧 tick 击杀不触发死亡冲量
+					if (!bIsDebuffEffect)
+					{
+						CombatInterface->SetDeathImpulse(UAuraAbilitySystemLibrary::GetDeathImpulse(Props.EffectContextHandle));
+					}
 					CombatInterface->Die();
 				}
 				SendXPEvent(Props);
 			}
 			else
 			{
-				FGameplayTagContainer TagContainer;
-				TagContainer.AddTag(FAuraGameplayTags::Get().Effects_HitReact);
-				Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+				// 命中且掷骰成功 → 施加 debuff GE（仅服务器执行，避免客户端重复施加）
+				if (bIsDebuffHit && !bIsDebuffEffect && Props.TargetAvatarActor->HasAuthority())
+				{
+					const FGameplayTag DebuffDamageType = UAuraAbilitySystemLibrary::GetDebuffDamageType(Props.EffectContextHandle);
+					const TSubclassOf<UGameplayEffect>* DebuffEffectClass = Tags.DamageTypesToDebuffEffects.Find(DebuffDamageType);
+					if (DebuffEffectClass && *DebuffEffectClass && IsValid(Props.SourceASC))
+					{
+						const FGameplayEffectSpecHandle DebuffSpecHandle = Props.SourceASC->MakeOutgoingSpec(*DebuffEffectClass, 1.f, Props.EffectContextHandle);
+						if (DebuffSpecHandle.Data.IsValid())
+						{
+							FGameplayEffectSpec* MutableSpec = DebuffSpecHandle.Data.Get();
+							MutableSpec->AddDynamicAssetTag(Tags.Effects_Debuff); // 门控标签
+							if (const FGameplayTag* DebuffTag = Tags.DamageTypesToDebuffTags.Find(DebuffDamageType))
+							{
+								MutableSpec->DynamicGrantedTags.AddTag(*DebuffTag); // Effects.Debuff.Burn 授予目标
+							}
+							// 每跳伤害由 ExecCalc_Debuff 从 spec 的 SetByCaller 读取（执行时标签已注册）
+							UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(DebuffSpecHandle, Tags.Debuff_Damage, UAuraAbilitySystemLibrary::GetDebuffDamage(Props.EffectContextHandle));
+							// 锁定时长 + 直接设周期：GE CDO 无法在构造时烘焙 SetByCaller 标签，
+							// 且 UE5.8 的 FScalableFloat 不支持 SetByCaller，所以直接在 spec 上覆盖。
+							DebuffSpecHandle.Data->SetDuration(UAuraAbilitySystemLibrary::GetDebuffDuration(Props.EffectContextHandle), true);
+							DebuffSpecHandle.Data->Period = UAuraAbilitySystemLibrary::GetDebuffFrequency(Props.EffectContextHandle);
+							Props.TargetASC->ApplyGameplayEffectSpecToSelf(*DebuffSpecHandle.Data.Get());
+						}
+					}
+				}
+
+				// 燃烧 tick 不触发硬直
+				if (!bIsDebuffEffect)
+				{
+					FGameplayTagContainer TagContainer;
+					TagContainer.AddTag(Tags.Effects_HitReact);
+					Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+
+					// 击退：把目标沿 施法者→目标 方向击退（仅服务器执行，避免重复施加）
+					const float KnockbackMagnitude = UAuraAbilitySystemLibrary::GetKnockbackMagnitude(Props.EffectContextHandle);
+					if (KnockbackMagnitude > 0.f && Props.TargetCharacter && Props.SourceAvatarActor && Props.TargetAvatarActor->HasAuthority())
+					{
+						const FVector Direction = (Props.TargetAvatarActor->GetActorLocation() - Props.SourceAvatarActor->GetActorLocation()).GetSafeNormal2D();
+						const FVector KnockbackVelocity = Direction * KnockbackMagnitude;
+						Props.TargetCharacter->LaunchCharacter(KnockbackVelocity, true, true);
+
+						// 打断敌人追击：短暂暂停路径跟随，避免 AI 每帧重设速度把击退覆盖掉
+						if (AAIController* TargetAIController = Cast<AAIController>(Props.TargetCharacter->GetController()))
+						{
+							if (UPathFollowingComponent* PathFollowing = TargetAIController->GetPathFollowingComponent())
+							{
+								PathFollowing->PauseMove(FAIRequestID::CurrentRequest, EPathFollowingVelocityMode::Keep);
+								FTimerHandle KnockbackTimer;
+								Props.TargetCharacter->GetWorldTimerManager().SetTimer(KnockbackTimer, [TargetAIController]()
+								{
+									if (IsValid(TargetAIController))
+									{
+										if (UPathFollowingComponent* PathFollowing = TargetAIController->GetPathFollowingComponent())
+										{
+											PathFollowing->ResumeMove(FAIRequestID::CurrentRequest);
+										}
+									}
+								}, 0.2f, false);
+							}
+						}
+					}
+				}
 			}
-			
+
 			if (Props.SourceCharacter != Props.TargetCharacter)
 			{
 				const bool bBlockedHit = UAuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);

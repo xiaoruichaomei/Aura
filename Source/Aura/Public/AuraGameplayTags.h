@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 
+class UGameplayEffect;
+
 /**
- * 
+ *
  */
 
 struct FAuraGameplayTags
@@ -81,8 +83,21 @@ public:
 	FGameplayTag CombatSocket_Tail;
 	
 	TMap<FGameplayTag, FGameplayTag> DamageTypesToResistance;
-	
+	TMap<FGameplayTag, TSubclassOf<UGameplayEffect>> DamageTypesToDebuffEffects;
+	TMap<FGameplayTag, FGameplayTag> DamageTypesToDebuffTags;
+
 	FGameplayTag Effects_HitReact;
+
+	FGameplayTag Effects_Debuff;
+	FGameplayTag Effects_Debuff_Burn;
+	FGameplayTag Effects_Debuff_Stun;
+	FGameplayTag Effects_Debuff_Electrocute;
+	FGameplayTag Effects_Debuff_Freeze;
+
+	FGameplayTag Debuff_Chance;
+	FGameplayTag Debuff_Damage;
+	FGameplayTag Debuff_Duration;
+	FGameplayTag Debuff_Frequency;
 	
 	FGameplayTag Montage_Attack_1;
 	FGameplayTag Montage_Attack_2;

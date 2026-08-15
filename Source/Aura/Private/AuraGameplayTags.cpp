@@ -3,6 +3,8 @@
 
 #include "AuraGameplayTags.h"
 #include "GameplayTagsManager.h"
+#include "GameplayEffect.h"
+#include "AbilitySystem/GameplayEffects/AuraDebuffGameplayEffect.h"
 
 FAuraGameplayTags FAuraGameplayTags::GameplayTags;
 
@@ -178,9 +180,58 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTags.DamageTypesToResistance.Add(GameplayTags.Damage_Physical, GameplayTags.Attributes_Resistance_Physical);
 	
 	GameplayTags.Effects_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("Effects.HitReact"), 
+		FName("Effects.HitReact"),
 		FString("Tag Granted when Hit React")
 		);
+
+	GameplayTags.Effects_Debuff = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Effects.Debuff"),
+		FString("Debuff")
+		);
+
+	GameplayTags.Effects_Debuff_Burn = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Effects.Debuff.Burn"),
+		FString("Burn Damage over Time")
+		);
+
+	GameplayTags.Effects_Debuff_Stun = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Effects.Debuff.Stun"),
+		FString("Stun Debuff")
+		);
+
+	GameplayTags.Effects_Debuff_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Effects.Debuff.Electrocute"),
+		FString("Electrocute Debuff")
+		);
+
+	GameplayTags.Effects_Debuff_Freeze = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Effects.Debuff.Freeze"),
+		FString("Freeze Debuff")
+		);
+
+	GameplayTags.Debuff_Chance = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Chance"),
+		FString("Debuff Chance")
+		);
+
+	GameplayTags.Debuff_Damage = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Damage"),
+		FString("Debuff Damage per Tick")
+		);
+
+	GameplayTags.Debuff_Duration = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Duration"),
+		FString("Debuff Duration")
+		);
+
+	GameplayTags.Debuff_Frequency = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Frequency"),
+		FString("Debuff Tick Frequency")
+		);
+
+	// v1 只挂火系 → 燃烧；后续元素在这里补两条即可
+	GameplayTags.DamageTypesToDebuffTags.Add(GameplayTags.Damage_Fire, GameplayTags.Effects_Debuff_Burn);
+	GameplayTags.DamageTypesToDebuffEffects.Add(GameplayTags.Damage_Fire, UAuraDebuffBurn::StaticClass());
 	
 	GameplayTags.Abilities_None = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Abilities.None"), 

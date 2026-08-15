@@ -14,6 +14,7 @@ class UGameplayAbility;
 class UAbilitySystemComponent;
 class UAttributeSet;
 class UGameplayEffect;
+class UAuraNiagaraComponent;
 
 UCLASS(Abstract)
 class AURA_API ABaseCharacter : public ACharacter, public IAbilitySystemInterface, public ICombatInterface
@@ -32,6 +33,7 @@ public:
 	virtual AActor* GetAvatar_Implementation() override;
 	virtual UAnimMontage* GetHitReactMontage_Implementation() override;
 	virtual void Die() override;
+	virtual void SetDeathImpulse(const FVector& InImpulse) override;
 	virtual TArray<FTaggedMontage> GetAttackMontages_Implementation() override;
 	virtual UNiagaraSystem* GetBloodEffect_Implementation() override;
 	virtual FTaggedMontage GetTaggedMontageByTag_Implementation(const FGameplayTag& Tag) override;
@@ -42,6 +44,9 @@ public:
 	
 	UFUNCTION(NetMulticast, Reliable)
 	virtual void MulticastHandleDeath();
+
+	/** 延迟到物理体初始化完成后施加死亡冲量（同帧立即 AddImpulse 不稳定） */
+	void ApplyDeathImpulse();
 	
 	UPROPERTY(EditAnywhere, Category="Combat")
 	TArray<FTaggedMontage> AttackMontages;
@@ -97,9 +102,16 @@ protected:
 	// </Dissolve Effects>
 	
 	bool bDead = false;
+
+	/** 死亡时施加到骨骼网格的物理冲量 */
+	FVector DeathImpulse;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	UNiagaraSystem* BloodEffect;
+
+	/** 燃烧 debuff 的表现（标签 Effects.Debuff.Burn 存在时激活） */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
+	TObjectPtr<UAuraNiagaraComponent> BurnNiagaraComponent;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	USoundBase* DeathSound;

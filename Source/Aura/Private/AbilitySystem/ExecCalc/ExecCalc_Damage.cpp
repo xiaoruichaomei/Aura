@@ -101,14 +101,19 @@ void UExecCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecuti
 	EvaluateParameters.TargetTags = TargetTags;
 	
 	float Damage = 0.f;
+	FGameplayTag HitDamageType;
 	for (const auto& Pair : FAuraGameplayTags::Get().DamageTypesToResistance)
 	{
 		// const FGameplayTag DamageTypeTag = Pair.Key;
 		const FGameplayTag ResistanceTag = Pair.Value;
 		const FGameplayEffectAttributeCaptureDefinition CaptureDefinition = AuraDamageStatics().TagsToCaptureDefs[ResistanceTag];
-		
+
 		float DamageTypeValue = Spec.GetSetByCallerMagnitude(Pair.Key, false);
-		
+		if (DamageTypeValue > 0.f)
+		{
+			HitDamageType = Pair.Key;
+		}
+
 		float Resistance = 0.f;
 		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(CaptureDefinition, EvaluateParameters, Resistance);
 		Resistance = FMath::Clamp(Resistance, 0.f, 100.f);
@@ -170,7 +175,22 @@ void UExecCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecuti
 	const bool bCriticalHit = FMath::RandRange(1, 100) <= EffectiveCriticalHitChance;
 	
 	UAuraAbilitySystemLibrary::SetIsCriticalHit(EffectContextHandle, bCriticalHit);
-	
+
+	// 读取 debuff 参数并掷骰，成功则把 debuff 元数据写进效果上下文（随 context 复制）
+	const FAuraGameplayTags& Tags = FAuraGameplayTags::Get();
+	const float DebuffChance = Spec.GetSetByCallerMagnitude(Tags.Debuff_Chance, false);
+	if (DebuffChance > 0.f && HitDamageType.IsValid() && Tags.DamageTypesToDebuffEffects.Contains(HitDamageType))
+	{
+		if (FMath::FRandRange(0.f, 100.f) <= DebuffChance)
+		{
+			UAuraAbilitySystemLibrary::SetIsDebuff(EffectContextHandle, true);
+			UAuraAbilitySystemLibrary::SetDebuffDamage(EffectContextHandle, Spec.GetSetByCallerMagnitude(Tags.Debuff_Damage, false));
+			UAuraAbilitySystemLibrary::SetDebuffDuration(EffectContextHandle, Spec.GetSetByCallerMagnitude(Tags.Debuff_Duration, false));
+			UAuraAbilitySystemLibrary::SetDebuffFrequency(EffectContextHandle, Spec.GetSetByCallerMagnitude(Tags.Debuff_Frequency, false));
+			UAuraAbilitySystemLibrary::SetDebuffDamageType(EffectContextHandle, HitDamageType);
+		}
+	}
+
 	Damage = bCriticalHit ? 2.f * Damage + SourceCriticalHitDamage : Damage;
 	
 	const FGameplayModifierEvaluatedData EvaluatedData(UAuraAttributeSet::GetIncomingDamageAttribute(), EGameplayModOp::Additive, Damage);

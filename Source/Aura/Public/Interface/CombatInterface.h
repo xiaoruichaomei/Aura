@@ -56,6 +56,9 @@ public:
 	UAnimMontage* GetHitReactMontage();
 	
 	virtual void Die() = 0;
+
+	/** 死亡前由伤害系统传入的物理冲量（死亡时施加到骨骼网格） */
+	virtual void SetDeathImpulse(const FVector& InImpulse) {}
 	
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	bool IsDead() const;

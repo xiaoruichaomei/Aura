@@ -41,11 +41,39 @@ bool FAuraGameplayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap* M
 		}
 		if (bIsCriticalHit)
 		{
-			RepBits |= 1 << 8;	
+			RepBits |= 1 << 8;
+		}
+		if (bIsDebuff)
+		{
+			RepBits |= 1 << 9;
+		}
+		if (DebuffDamage != 0.f)
+		{
+			RepBits |= 1 << 10;
+		}
+		if (DebuffDuration != 0.f)
+		{
+			RepBits |= 1 << 11;
+		}
+		if (DebuffFrequency != 0.f)
+		{
+			RepBits |= 1 << 12;
+		}
+		if (DebuffDamageType.IsValid())
+		{
+			RepBits |= 1 << 13;
+		}
+		if (!DeathImpulse.IsZero())
+		{
+			RepBits |= 1 << 14;
+		}
+		if (KnockbackMagnitude != 0.f)
+		{
+			RepBits |= 1 << 15;
 		}
 	}
-	
-	Ar.SerializeBits(&RepBits, 9);
+
+	Ar.SerializeBits(&RepBits, 16);
 	
 	if (RepBits & (1 << 0))
 	{
@@ -95,7 +123,35 @@ bool FAuraGameplayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap* M
 	{
 		Ar << bIsCriticalHit;
 	}
-	
+	if (RepBits & (1 << 9))
+	{
+		Ar << bIsDebuff;
+	}
+	if (RepBits & (1 << 10))
+	{
+		Ar << DebuffDamage;
+	}
+	if (RepBits & (1 << 11))
+	{
+		Ar << DebuffDuration;
+	}
+	if (RepBits & (1 << 12))
+	{
+		Ar << DebuffFrequency;
+	}
+	if (RepBits & (1 << 13))
+	{
+		Ar << DebuffDamageType;
+	}
+	if (RepBits & (1 << 14))
+	{
+		Ar << DeathImpulse;
+	}
+	if (RepBits & (1 << 15))
+	{
+		Ar << KnockbackMagnitude;
+	}
+
 	if (Ar.IsLoading())
 	{
 		AddInstigator(Instigator.Get(), EffectCauser.Get()); // Just to initialize InstigatorAbilitySystemComponent

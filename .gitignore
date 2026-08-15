@@ -4,7 +4,7 @@ Intermediate/
 Saved/
 DerivedDataCache/
 Build/
-Data/
+/Data/
 .vs/
 *.sln
 *.slnx

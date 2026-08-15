@@ -6,12 +6,14 @@
 #include "AbilitySystemComponent.h"
 #include "AuraGameplayTags.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
+#include "AbilitySystem/AuraNiagaraComponent.h"
 #include "Aura/Aura.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "NiagaraSystem.h"
 
 ABaseCharacter::ABaseCharacter()
 {
@@ -28,13 +30,29 @@ ABaseCharacter::ABaseCharacter()
 	Weapon->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-	
+
+	BurnNiagaraComponent = CreateDefaultSubobject<UAuraNiagaraComponent>("BurnNiagaraComponent");
+	check(BurnNiagaraComponent);
+	BurnNiagaraComponent->SetupAttachment(GetMesh());
 }
 
 void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	// 燃烧特效：标签在 BeginPlay 时已注册（不能在构造函数里读 GameplayTag）；
+	// Niagara 资产默认用火系火焰系统，可在蓝图里覆盖。
+	if (BurnNiagaraComponent)
+	{
+		BurnNiagaraComponent->GameplayTag = FAuraGameplayTags::Get().Effects_Debuff_Burn;
+		if (!BurnNiagaraComponent->GetAsset())
+		{
+			if (UNiagaraSystem* FireSystem = LoadObject<UNiagaraSystem>(nullptr, TEXT("/Game/Assets/Effects/Fire/NS_Fire.NS_Fire")))
+			{
+				BurnNiagaraComponent->SetAsset(FireSystem);
+			}
+		}
+	}
 }
 
 UAbilitySystemComponent* ABaseCharacter::GetAbilitySystemComponent() const
@@ -51,6 +69,25 @@ void ABaseCharacter::Die()
 {
 	Weapon->DetachFromComponent(FDetachmentTransformRules(EDetachmentRule::KeepWorld, true));
 	MulticastHandleDeath();
+}
+
+void ABaseCharacter::SetDeathImpulse(const FVector& InImpulse)
+{
+	DeathImpulse = InImpulse;
+}
+
+void ABaseCharacter::ApplyDeathImpulse()
+{
+	if (IsValid(GetMesh()))
+	{
+		// 把冲量施加到每个物理骨骼：只作用于根骨骼会被约束吸收，尸体几乎不动。
+		// bVelocityChange=true 时每个骨骼都直接加上该速度，整个 ragdoll 作为整体被抛飞。
+		const int32 NumBones = GetMesh()->GetNumBones();
+		for (int32 i = 0; i < NumBones; ++i)
+		{
+			GetMesh()->AddImpulse(DeathImpulse, GetMesh()->GetBoneName(i), true);
+		}
+	}
 }
 
 TArray<FTaggedMontage> ABaseCharacter::GetAttackMontages_Implementation()
@@ -102,7 +139,16 @@ void ABaseCharacter::MulticastHandleDeath_Implementation()
 	GetMesh()->SetEnableGravity(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
 	GetMesh()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
-	
+
+	// 死亡冲量：按命中方向把尸体击飞。
+	// 延迟 0.05s 再施加，等物理体初始化完成（同帧立即 AddImpulse 会被丢弃/不稳定）。
+	if (!DeathImpulse.IsZero())
+	{
+		FTimerHandle DeathImpulseTimer;
+		GetWorldTimerManager().SetTimer(DeathImpulseTimer, this, &ABaseCharacter::ApplyDeathImpulse, 0.05f, false);
+	}
+
+
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Dissolve();
 	bDead = true;

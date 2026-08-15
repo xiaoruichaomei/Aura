@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameplayEffectTypes.h"
+#include "GameplayTagContainer.h"
 #include "AuraAbilityTypes.generated.h"
 
 USTRUCT(BlueprintType)
@@ -12,7 +13,23 @@ public:
 	bool IsBlockedHit() const { return bIsBlockedHit; }
 	bool IsCriticalHit() const { return bIsCriticalHit; }
 	void SetIsBlockedHit(bool bInIsBlockedHit) { bIsBlockedHit = bInIsBlockedHit; }
-	void SetIsCriticalHit(bool bInIsCriticalHit) { bIsCriticalHit = bInIsCriticalHit; } 
+	void SetIsCriticalHit(bool bInIsCriticalHit) { bIsCriticalHit = bInIsCriticalHit; }
+
+	bool IsDebuff() const { return bIsDebuff; }
+	float GetDebuffDamage() const { return DebuffDamage; }
+	float GetDebuffDuration() const { return DebuffDuration; }
+	float GetDebuffFrequency() const { return DebuffFrequency; }
+	FGameplayTag GetDebuffDamageType() const { return DebuffDamageType; }
+	void SetIsDebuff(bool bInIsDebuff) { bIsDebuff = bInIsDebuff; }
+	void SetDebuffDamage(float InDebuffDamage) { DebuffDamage = InDebuffDamage; }
+	void SetDebuffDuration(float InDebuffDuration) { DebuffDuration = InDebuffDuration; }
+	void SetDebuffFrequency(float InDebuffFrequency) { DebuffFrequency = InDebuffFrequency; }
+	void SetDebuffDamageType(const FGameplayTag& InDamageType) { DebuffDamageType = InDamageType; }
+
+	FVector GetDeathImpulse() const { return DeathImpulse; }
+	void SetDeathImpulse(const FVector& InImpulse) { DeathImpulse = InImpulse; }
+	float GetKnockbackMagnitude() const { return KnockbackMagnitude; }
+	void SetKnockbackMagnitude(float InMagnitude) { KnockbackMagnitude = InMagnitude; }
 	
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
@@ -37,9 +54,30 @@ public:
 protected:
 	UPROPERTY()
 	bool bIsBlockedHit = false;
-	
+
 	UPROPERTY()
 	bool bIsCriticalHit = false;
+
+	UPROPERTY()
+	bool bIsDebuff = false;
+
+	UPROPERTY()
+	float DebuffDamage = 0.f;
+
+	UPROPERTY()
+	float DebuffDuration = 0.f;
+
+	UPROPERTY()
+	float DebuffFrequency = 0.f;
+
+	UPROPERTY()
+	FGameplayTag DebuffDamageType;
+
+	UPROPERTY()
+	FVector DeathImpulse = FVector::ZeroVector;
+
+	UPROPERTY()
+	float KnockbackMagnitude = 0.f;
 };
 
 template<>
