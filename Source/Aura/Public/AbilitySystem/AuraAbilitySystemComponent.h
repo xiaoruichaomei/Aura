@@ -43,7 +43,14 @@ public:
 	FGameplayTag GetInputTagFromAbilityTag(const FGameplayTag& AbilityTag);
 	
 	FGameplayAbilitySpec* GetSpecFromAbilityTag(const FGameplayTag& AbilityTag);
-	
+	FGameplayAbilitySpec* GetSpecWithSlot(const FGameplayTag& Slot);
+
+	/** 遍历所有已装备且未激活的被动并重新激活（角色加载/重生/AbilitySpec 重新复制后调用） */
+	void ActivateEquippedPassiveAbilities();
+
+	/** 判断槽位是否是被动槽位（Input.Passive.*） */
+	bool IsPassiveSlot(const FGameplayTag& Slot) const;
+
 	void UpdateAbilityStatus(int32 Level);
 	
 	UFUNCTION(Server, Reliable)
@@ -83,4 +90,10 @@ private:
 	void AddStartupAbilities(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbilities);
 	void AddPassiveAbilities(const TArray<TSubclassOf<UGameplayAbility>>& PassiveAbilities);
 	void BroadcastAbilityStatus(const FGameplayTag& AbilityTag, const FGameplayTag& StatusTag, int32 AbilityLevel);
+
+	/** 通过 AbilityInfo 的 AbilityType 判断是否被动类型 */
+	bool IsPassiveAbility(const FGameplayTag& AbilityTag) const;
+
+	/** 替换 Spec 的 Abilities.Status.* 状态标签 */
+	void SetAbilityStatus(FGameplayAbilitySpec* Spec, const FGameplayTag& StatusTag);
 };

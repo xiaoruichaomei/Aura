@@ -3,7 +3,6 @@
 
 #include "AuraGameplayTags.h"
 #include "GameplayTagsManager.h"
-#include "GameplayEffect.h"
 #include "AbilitySystem/GameplayEffects/AuraDebuffGameplayEffect.h"
 
 FAuraGameplayTags FAuraGameplayTags::GameplayTags;

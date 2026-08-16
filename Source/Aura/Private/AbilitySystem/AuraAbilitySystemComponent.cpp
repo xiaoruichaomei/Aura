@@ -13,6 +13,9 @@
 void UAuraAbilitySystemComponent::AbilityActorInfoSet()
 {
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &UAuraAbilitySystemComponent::ClientEffectApplied);
+
+	// 角色加载/重生重新绑定 ActorInfo 后，恢复已装备被动的激活状态（能力 Spec 持久在 PlayerState 的 ASC 上）
+	ActivateEquippedPassiveAbilities();
 }
 
 void UAuraAbilitySystemComponent::AddCharacterAbilities(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbilities, const TArray<TSubclassOf<UGameplayAbility>>& PassiveAbilities)
@@ -165,6 +168,84 @@ FGameplayAbilitySpec* UAuraAbilitySystemComponent::GetSpecFromAbilityTag(const F
 	return nullptr;
 }
 
+FGameplayAbilitySpec* UAuraAbilitySystemComponent::GetSpecWithSlot(const FGameplayTag& Slot)
+{
+	FScopedAbilityListLock ActiveScopeLock(*this);
+	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	{
+		if (AbilityHasSlot(&AbilitySpec, Slot))
+		{
+			return &AbilitySpec;
+		}
+	}
+	return nullptr;
+}
+
+bool UAuraAbilitySystemComponent::IsPassiveSlot(const FGameplayTag& Slot) const
+{
+	return Slot.MatchesTag(FGameplayTag::RequestGameplayTag(FName("Input.Passive")));
+}
+
+bool UAuraAbilitySystemComponent::IsPassiveAbility(const FGameplayTag& AbilityTag) const
+{
+	if (!AbilityTag.IsValid())
+	{
+		return false;
+	}
+	const UAbilityInfo* AbilityInfoData = UAuraAbilitySystemLibrary::GetAbilityInfo(GetAvatarActor());
+	return AbilityInfoData && AbilityInfoData->FindAbilityInfoForTag(AbilityTag).AbilityType.MatchesTagExact(FAuraGameplayTags::Get().Abilities_Type_Passive);
+}
+
+void UAuraAbilitySystemComponent::SetAbilityStatus(FGameplayAbilitySpec* Spec, const FGameplayTag& StatusTag)
+{
+	if (!Spec)
+	{
+		return;
+	}
+	const FGameplayTag PrevStatus = GetStatusFromSpec(*Spec);
+	if (PrevStatus.IsValid())
+	{
+		Spec->GetDynamicSpecSourceTags().RemoveTag(PrevStatus);
+	}
+	Spec->GetDynamicSpecSourceTags().AddTag(StatusTag);
+	MarkAbilitySpecDirty(*Spec);
+}
+
+void UAuraAbilitySystemComponent::ActivateEquippedPassiveAbilities()
+{
+	if (!GetAvatarActor())
+	{
+		return;
+	}
+	const FAuraGameplayTags& GameplayTags = FAuraGameplayTags::Get();
+	FScopedAbilityListLock ActiveScopeLock(*this);
+	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (Spec.IsActive())
+		{
+			continue;
+		}
+		const FGameplayTag AbilityTag = GetAbilityTagFromSpec(Spec);
+		if (!AbilityTag.IsValid())
+		{
+			continue;
+		}
+		if (!GetStatusFromSpec(Spec).MatchesTagExact(GameplayTags.Abilities_Status_Equipped))
+		{
+			continue;
+		}
+		if (!IsPassiveAbility(AbilityTag))
+		{
+			continue;
+		}
+		if (!IsPassiveSlot(GetInputTagFromSpec(Spec)))
+		{
+			continue;
+		}
+		TryActivateAbility(Spec.Handle);
+	}
+}
+
 void UAuraAbilitySystemComponent::UpdateAbilityStatus(int32 Level)
 {
 	UAbilityInfo* AbilitiesInfo = UAuraAbilitySystemLibrary::GetAbilityInfo(GetAvatarActor());
@@ -187,27 +268,72 @@ void UAuraAbilitySystemComponent::UpdateAbilityStatus(int32 Level)
 
 void UAuraAbilitySystemComponent::ServerEquipAbility_Implementation(const FGameplayTag& AbilityTag, const FGameplayTag& Slot)
 {
-	if (FGameplayAbilitySpec* AbilitySpec = GetSpecFromAbilityTag(AbilityTag))
+	const FAuraGameplayTags& GameplayTags = FAuraGameplayTags::Get();
+
+	FGameplayAbilitySpec* NewSpec = GetSpecFromAbilityTag(AbilityTag);
+	if (!NewSpec || !Slot.IsValid())
 	{
-		const FAuraGameplayTags& GameplayTags = FAuraGameplayTags::Get();
-		const FGameplayTag& PrevSlot = GetInputTagFromSpec(*AbilitySpec);
-		const FGameplayTag& Status = GetStatusFromSpec(*AbilitySpec);
-		
-		const bool bStatusValid = Status == GameplayTags.Abilities_Status_Equipped || Status == GameplayTags.Abilities_Status_Unlocked;
-		if (bStatusValid)
-		{
-			ClearAbilitiesOfSlot(Slot);
-			ClearSlot(AbilitySpec);
-			AbilitySpec->GetDynamicSpecSourceTags().AddTag(Slot);
-			if (Status.MatchesTagExact(GameplayTags.Abilities_Status_Unlocked))
-			{
-				AbilitySpec->GetDynamicSpecSourceTags().RemoveTag(GameplayTags.Abilities_Status_Unlocked);
-				AbilitySpec->GetDynamicSpecSourceTags().AddTag(GameplayTags.Abilities_Status_Equipped);
-			}
-			MarkAbilitySpecDirty(*AbilitySpec);
-		}
-		ClientEquipAbility(AbilityTag, GameplayTags.Abilities_Status_Equipped, Slot, PrevSlot);
+		return;
 	}
+
+	// 目标槽位里的旧技能
+	FGameplayAbilitySpec* OldSpec = GetSpecWithSlot(Slot);
+
+	// 记录新旧技能的旧状态，用于被动激活失败时回滚
+	const FGameplayTag NewPrevSlot = GetInputTagFromSpec(*NewSpec);
+	const FGameplayTag NewPrevStatus = GetStatusFromSpec(*NewSpec);
+	const FGameplayTag OldPrevSlot = OldSpec ? GetInputTagFromSpec(*OldSpec) : FGameplayTag();
+	const FGameplayTag OldPrevStatus = OldSpec ? GetStatusFromSpec(*OldSpec) : FGameplayTag();
+
+	// 1) 旧技能与新技能不同：停用旧被动、释放槽位、状态回 Unlocked
+	if (OldSpec && OldSpec != NewSpec)
+	{
+		const FGameplayTag OldAbilityTag = GetAbilityTagFromSpec(*OldSpec);
+		if (OldAbilityTag.IsValid() && IsPassiveAbility(OldAbilityTag))
+		{
+			DeactivatePassiveAbility.Broadcast(OldAbilityTag);
+		}
+		ClearSlot(OldSpec);
+		SetAbilityStatus(OldSpec, GameplayTags.Abilities_Status_Unlocked);
+	}
+
+	// 2) 装备新技能：清原槽位 → 加新槽位 → 状态 Equipped
+	ClearSlot(NewSpec);
+	NewSpec->GetDynamicSpecSourceTags().AddTag(Slot);
+	SetAbilityStatus(NewSpec, GameplayTags.Abilities_Status_Equipped);
+
+	// 3) 被动激活；同一被动换槽位时 IsActive() 仍为 true，不会结束再重启
+	const bool bIsPassive = IsPassiveAbility(AbilityTag);
+	if (bIsPassive && !NewSpec->IsActive())
+	{
+		if (!TryActivateAbility(NewSpec->Handle))
+		{
+			// 激活失败：回滚到装备前状态，不广播装备成功
+			NewSpec->GetDynamicSpecSourceTags().RemoveTag(Slot);
+			if (NewPrevSlot.IsValid())
+			{
+				NewSpec->GetDynamicSpecSourceTags().AddTag(NewPrevSlot);
+			}
+			SetAbilityStatus(NewSpec, NewPrevStatus);
+
+			if (OldSpec)
+			{
+				if (OldPrevSlot.IsValid())
+				{
+					OldSpec->GetDynamicSpecSourceTags().AddTag(OldPrevSlot);
+				}
+				SetAbilityStatus(OldSpec, OldPrevStatus);
+				// 旧被动之前处于激活状态，回滚时恢复其激活
+				if (OldPrevStatus.MatchesTagExact(GameplayTags.Abilities_Status_Equipped) && IsPassiveAbility(GetAbilityTagFromSpec(*OldSpec)) && !OldSpec->IsActive())
+				{
+					TryActivateAbility(OldSpec->Handle);
+				}
+			}
+			return;
+		}
+	}
+
+	ClientEquipAbility(AbilityTag, GameplayTags.Abilities_Status_Equipped, Slot, NewPrevSlot);
 }
 
 void UAuraAbilitySystemComponent::ClientEquipAbility_Implementation(const FGameplayTag& AbilityTag, const FGameplayTag& Status, const FGameplayTag& Slot, const FGameplayTag& PreviousSlot)
@@ -312,12 +438,15 @@ void UAuraAbilitySystemComponent::ServerSpendSpellPoint_Implementation(const FGa
 void UAuraAbilitySystemComponent::OnRep_ActivateAbilities()
 {
 	Super::OnRep_ActivateAbilities();
-	
+
 	if (!bStartupAbilitiesGiven)
 	{
 		bStartupAbilitiesGiven = true;
 		AbilitiesGiven.Broadcast();
 	}
+
+	// AbilitySpec 复制完成后，恢复已装备被动的激活状态
+	ActivateEquippedPassiveAbilities();
 }
 
 void UAuraAbilitySystemComponent::ClientEffectApplied_Implementation(UAbilitySystemComponent* AbilitySystemComponent, const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveEffectHandle) const
