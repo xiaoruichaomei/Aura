@@ -26,6 +26,9 @@ public:
 	virtual void BeginPlay() override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	UAttributeSet* GetAttributeSet() const { return AttributeSet; }
+
+	/** 武器（法杖）网格组件，供光束等获取 TipSocket 用 */
+	USkeletalMeshComponent* GetWeapon() const { return Weapon; }
 	
 	// <CombatInterface>
 	virtual FVector GetCombatSockettLocation_Implementation(const FGameplayTag& MontageTag) override;
@@ -65,7 +68,7 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat")
 	TObjectPtr<USkeletalMeshComponent> Weapon;
-	
+
 	UPROPERTY(EditAnywhere, Category="Combat")
 	FName WeaponTipSocketName;
 	

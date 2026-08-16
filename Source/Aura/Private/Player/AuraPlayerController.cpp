@@ -121,6 +121,47 @@ void AAuraPlayerController::CursorTrace()
 	}
 }
 
+bool AAuraPlayerController::GetBeamCursorLocation(FVector& OutLocation) const
+{
+	if (IsLocalController() && CursorHit.bBlockingHit)
+	{
+		OutLocation = CursorHit.ImpactPoint;
+		return true;
+	}
+	if (bHasBeamCursorLocation)
+	{
+		OutLocation = BeamCursorLocation;
+		return true;
+	}
+	return false;
+}
+
+void AAuraPlayerController::SubmitBeamCursorLocation(const FVector& InLocation)
+{
+	if (InLocation.ContainsNaN())
+	{
+		return;
+	}
+
+	const bool bLocationChanged = !bHasBeamCursorLocation || !BeamCursorLocation.Equals(InLocation, 1.f);
+	BeamCursorLocation = InLocation;
+	bHasBeamCursorLocation = true;
+
+	if (bLocationChanged && !HasAuthority())
+	{
+		ServerSetBeamCursorLocation(InLocation);
+	}
+}
+
+void AAuraPlayerController::ServerSetBeamCursorLocation_Implementation(FVector_NetQuantize InLocation)
+{
+	if (!FVector(InLocation).ContainsNaN())
+	{
+		BeamCursorLocation = InLocation;
+		bHasBeamCursorLocation = true;
+	}
+}
+
 void AAuraPlayerController::MulticastSpawnClickEffect_Implementation(const FVector& CursorLocation)
 {
 	if (ClickNiagaraSystem)
@@ -309,4 +350,3 @@ UAuraAbilitySystemComponent* AAuraPlayerController::GetASC()
 	}
 	return AuraAbilitySystemComponent;
 }
-

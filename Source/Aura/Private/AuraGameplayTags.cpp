@@ -189,6 +189,16 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Blocks the player's movement and other abilities (e.g. while channeling)")
 		);
 
+	GameplayTags.GameplayCue_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("GameplayCue.Electrocute"),
+		FString("Electrocute beam gameplay cue")
+		);
+
+	GameplayTags.Cooldown_Lightning_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Cooldown.Lightning.Electrocute"),
+		FString("Electrocute cooldown")
+		);
+
 	GameplayTags.Effects_Debuff = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Effects.Debuff"),
 		FString("Debuff")

@@ -90,6 +90,10 @@ public:
 
 	FGameplayTag Player_Block;
 
+	FGameplayTag GameplayCue_Electrocute;
+
+	FGameplayTag Cooldown_Lightning_Electrocute;
+
 	FGameplayTag Effects_Debuff;
 	FGameplayTag Effects_Debuff_Burn;
 	FGameplayTag Effects_Debuff_Stun;

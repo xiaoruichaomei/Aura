@@ -25,6 +25,7 @@ ABaseCharacter::ABaseCharacter()
 	Weapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetCapsuleComponent()->SetGenerateOverlapEvents(false);
 	GetMesh()->SetCollisionResponseToChannel(ECC_Projectile, ECR_Overlap);
+	GetMesh()->SetCollisionResponseToChannel(ECC_Beam, ECR_Block);
 	GetMesh()->SetGenerateOverlapEvents(true);
 	
 	Weapon->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);

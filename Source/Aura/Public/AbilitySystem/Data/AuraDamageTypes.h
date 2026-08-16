@@ -19,7 +19,7 @@ struct FAuraDamageEffectParams
 
 	FAuraDamageEffectParams() {}
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UObject> SourceObject;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
