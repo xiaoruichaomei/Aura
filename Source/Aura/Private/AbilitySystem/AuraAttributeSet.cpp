@@ -176,8 +176,8 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 					}
 				}
 
-				// 燃烧 tick 不触发硬直
-				if (!bIsDebuffEffect)
+				// 燃烧 tick 不触发硬直；眩晕中的目标也不触发硬直（避免打断眩晕动画）
+				if (!bIsDebuffEffect && !Props.TargetASC->HasMatchingGameplayTag(Tags.Effects_Debuff_Stun))
 				{
 					FGameplayTagContainer TagContainer;
 					TagContainer.AddTag(Tags.Effects_HitReact);

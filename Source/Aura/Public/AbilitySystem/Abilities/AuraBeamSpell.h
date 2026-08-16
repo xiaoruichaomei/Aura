@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystem/Abilities/AuraDamageGameplayAbility.h"
+#include "ActiveGameplayEffectHandle.h"
 #include "AuraBeamSpell.generated.h"
 
 class UAbilitySystemComponent;
@@ -138,6 +139,37 @@ protected:
 	/** 对 TargetActor 及所有 AdditionalTargets 施加伤害（含周期性调用） */
 	UFUNCTION(BlueprintCallable)
 	void DamageChainTargets();
+
+	// <眩晕（Electrocute Stun）>
+	/** 电击期间持续存在的眩晕 GE（Infinite，授予 Effects.Debuff.Stun + Effects.Debuff.Electrocute） */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun")
+	TSubclassOf<UGameplayEffect> ElectrocuteStunChannelClass;
+
+	/** 电击离开后 2 秒的眩晕 GE（Has Duration） */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Stun")
+	TSubclassOf<UGameplayEffect> ElectrocuteStunTailClass;
+
+	/** 目标 → 本技能施加的 Channel GE Handle（存在 = 目标正被本技能电击眩晕中） */
+	TMap<TWeakObjectPtr<AActor>, FActiveGameplayEffectHandle> StunChannelHandles;
+
+	/** 目标 → 本技能施加的 Tail GE Handle（目标重新进链时移除，避免 4 秒叠加） */
+	TMap<TWeakObjectPtr<AActor>, FActiveGameplayEffectHandle> StunTailHandles;
+
+	/** 按当前链内目标同步眩晕状态：新进入 → Channel；离开/死亡 → Tail + 移除 Channel */
+	void SyncStunWithCurrentTargets();
+
+	/** 目标进入链：移除本技能上次的 Tail，施加无限时长 Channel */
+	void ApplyStunToTarget(AActor* Target);
+
+	/** 目标离开链：先施加 2 秒 Tail 再移除 Channel（Stun 标签计数不落 0，动画不闪断）；死亡目标跳过 Tail */
+	void RemoveStunFromTarget(AActor* Target);
+
+	/** 施加 2 秒 Tail 眩晕 GE 并记录 handle */
+	void ApplyStunTail(AActor* Target);
+
+	/** 技能结束：给所有被电击目标加 Tail + 移除 Channel，清空 handle */
+	void ClearStunState();
+	// </眩晕>
 
 	void UpdateBeamFromCursor();
 	void RefreshBeamTarget(const FVector& CursorLocation);

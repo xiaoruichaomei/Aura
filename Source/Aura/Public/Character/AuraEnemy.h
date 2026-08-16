@@ -28,7 +28,11 @@ public:
 	virtual void PossessedBy(AController* NewController) override;
 	
 	void HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
+	void StunTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	virtual void Die() override;
+
+	/** 眩晕或受击任一生效都停走，都解除才恢复（避免受击结束提前放行眩晕中的敌人） */
+	void UpdateMovementSpeed();
 	
 	// <Enemy Interface>
 	virtual void SetActorHighlight(bool IsHighlight) override;
@@ -58,6 +62,10 @@ protected:
 	
 	UPROPERTY(BlueprintReadOnly, Category="Combat")
 	bool bHitReacting = false;
+
+	/** 是否处于眩晕状态（Effects.Debuff.Stun 标签数 > 0） */
+	UPROPERTY(BlueprintReadOnly, Category="Combat")
+	bool bStunned = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	float BaseWalkSpeed = 250.f;

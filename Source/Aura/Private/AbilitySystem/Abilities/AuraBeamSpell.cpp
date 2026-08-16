@@ -6,6 +6,7 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/AuraAbilitySystemLibrary.h"
+#include "AbilitySystem/GameplayEffects/AuraElectrocuteStunGameplayEffect.h"
 #include "Aura/Aura.h"
 #include "CollisionShape.h"
 #include "AuraGameplayTags.h"
@@ -20,6 +21,10 @@ UAuraBeamSpell::UAuraBeamSpell()
 {
 	// 蒙太奇/异步任务（PlayMontageAndWait、TargetDataUnderMouse）需要按次实例化
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerExecution;
+
+	// 眩晕 GE 默认指向本模块的 C++ 类（GA_Electrocute 蓝图可覆盖）
+	ElectrocuteStunChannelClass = UAuraElectrocuteStunChannel::StaticClass();
+	ElectrocuteStunTailClass = UAuraElectrocuteStunTail::StaticClass();
 }
 
 void UAuraBeamSpell::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
@@ -65,6 +70,9 @@ void UAuraBeamSpell::OnCastSafetyTimeout()
 
 void UAuraBeamSpell::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	// 技能结束：给所有被电击目标加 2 秒 Tail 眩晕 + 移除 Channel（先 Tail 后移除，Stun 标签计数不落 0）
+	ClearStunState();
+
 	if (CachedChannelingMontage && OwnerASC)
 	{
 		OwnerASC->StopMontageIfCurrent(*CachedChannelingMontage, 0.1f);
@@ -324,6 +332,8 @@ void UAuraBeamSpell::ApplyBeamDamage()
 	{
 		DamageChainTargets();
 	}
+	// 初始命中：链内目标进入眩晕（Channel）
+	SyncStunWithCurrentTargets();
 	UpdateOwnerFacing(TargetLocation);
 
 	AddShockLoopCue(); // 挂光束（先伤害再快照，起点更接近击退后的位置）
@@ -462,6 +472,9 @@ void UAuraBeamSpell::RefreshBeamTarget(const FVector& CursorLocation)
 		RemoveShockLoopCuesForTargets(OldPrimaryTarget, OldChainTargets);
 		AddShockLoopCue();
 	}
+
+	// 目标进入/离开链时同步眩晕状态：新进入 → Channel，离开 → Tail + 移除 Channel
+	SyncStunWithCurrentTargets();
 }
 
 bool UAuraBeamSpell::HaveSameCueTargets(AActor* OldPrimaryTarget, const TArray<TObjectPtr<AActor>>& OldChainTargets) const
@@ -493,6 +506,168 @@ void UAuraBeamSpell::DamageChainTargets()
 			CauseDamage(Target);
 		}
 	}
+}
+
+void UAuraBeamSpell::SyncStunWithCurrentTargets()
+{
+	// 眩晕 GE 只由服务器施加/移除：对 Minimal 复制的敌人 ASC，客户端预测应用/移除不可靠
+	// （会触发 "RemoveActiveGameplayEffect called without Authority"）。标签由服务器复制驱动客户端表现。
+	if (!OwnerActor || !OwnerActor->HasAuthority())
+	{
+		return;
+	}
+
+	// 当前链内有效目标
+	TArray<AActor*> CurrentTargets;
+	if (IsValid(TargetActor))
+	{
+		CurrentTargets.Add(TargetActor);
+	}
+	for (const TObjectPtr<AActor>& Target : AdditionalTargets)
+	{
+		if (IsValid(Target))
+		{
+			CurrentTargets.Add(Target);
+		}
+	}
+
+	// 离开链（含死亡被刷新剔除）的目标：Tail + 移除 Channel
+	TArray<AActor*> TargetsToRemove;
+	for (const auto& Pair : StunChannelHandles)
+	{
+		AActor* ChanneledTarget = Pair.Key.Get();
+		if (!ChanneledTarget || !CurrentTargets.Contains(ChanneledTarget))
+		{
+			TargetsToRemove.Add(ChanneledTarget);
+		}
+	}
+	for (AActor* Target : TargetsToRemove)
+	{
+		RemoveStunFromTarget(Target);
+	}
+
+	// 进入链的新目标：施加 Channel
+	for (AActor* Target : CurrentTargets)
+	{
+		if (!StunChannelHandles.Contains(Target))
+		{
+			ApplyStunToTarget(Target);
+		}
+	}
+}
+
+void UAuraBeamSpell::ApplyStunToTarget(AActor* Target)
+{
+	if (!IsValid(Target) || StunChannelHandles.Contains(Target))
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
+	UAbilitySystemComponent* CasterASC = GetAbilitySystemComponentFromActorInfo();
+	if (!TargetASC || !CasterASC || !ElectrocuteStunChannelClass)
+	{
+		return;
+	}
+
+	const FAuraGameplayTags& Tags = FAuraGameplayTags::Get();
+
+	// 重新进入链：移除本技能之前施加的尚未结束的 Tail（避免 4 秒叠加）
+	if (FActiveGameplayEffectHandle* TailHandle = StunTailHandles.Find(Target))
+	{
+		if (TailHandle->IsValid())
+		{
+			TargetASC->RemoveActiveGameplayEffect(*TailHandle);
+		}
+		StunTailHandles.Remove(Target);
+	}
+
+	// 施加无限时长 Channel：眩晕 + 标记来源电击
+	const FGameplayEffectContextHandle Context = GetContextFromOwner(FGameplayAbilityTargetDataHandle());
+	const FGameplayEffectSpecHandle Spec = CasterASC->MakeOutgoingSpec(ElectrocuteStunChannelClass, GetAbilityLevel(), Context);
+	if (Spec.Data.IsValid())
+	{
+		FGameplayEffectSpec* MutableSpec = Spec.Data.Get();
+		MutableSpec->DynamicGrantedTags.AddTag(Tags.Effects_Debuff_Stun);
+		MutableSpec->DynamicGrantedTags.AddTag(Tags.Effects_Debuff_Electrocute);
+		MutableSpec->AddDynamicAssetTag(Tags.Effects_Debuff); // 死亡时统一清理（RemoveActiveEffectsWithTags）
+		const FActiveGameplayEffectHandle Handle = CasterASC->ApplyGameplayEffectSpecToTarget(*MutableSpec, TargetASC);
+		StunChannelHandles.Add(Target, Handle);
+	}
+}
+
+void UAuraBeamSpell::RemoveStunFromTarget(AActor* Target)
+{
+	FActiveGameplayEffectHandle* ChannelHandle = StunChannelHandles.Find(Target);
+	if (!ChannelHandle)
+	{
+		return;
+	}
+
+	// 死亡目标：Channel 已被死亡时 Effects.Debuff 清理移除，不给尸体加 Tail，只清 handle
+	const bool bTargetDead = !IsValid(Target) || (Target->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(Target));
+
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
+	if (TargetASC && ChannelHandle->IsValid() && !bTargetDead)
+	{
+		// 先加 2s Tail 再移除 Channel：Stun 标签计数不落 0，眩晕动画不闪断
+		ApplyStunTail(Target);
+		TargetASC->RemoveActiveGameplayEffect(*ChannelHandle);
+	}
+	StunChannelHandles.Remove(Target);
+}
+
+void UAuraBeamSpell::ApplyStunTail(AActor* Target)
+{
+	if (!IsValid(Target) || (Target->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(Target)))
+	{
+		return; // 尸体不需要 2 秒 Tail
+	}
+
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
+	UAbilitySystemComponent* CasterASC = GetAbilitySystemComponentFromActorInfo();
+	if (!TargetASC || !CasterASC || !ElectrocuteStunTailClass)
+	{
+		return;
+	}
+
+	const FAuraGameplayTags& Tags = FAuraGameplayTags::Get();
+	const FGameplayEffectContextHandle Context = GetContextFromOwner(FGameplayAbilityTargetDataHandle());
+	const FGameplayEffectSpecHandle Spec = CasterASC->MakeOutgoingSpec(ElectrocuteStunTailClass, GetAbilityLevel(), Context);
+	if (Spec.Data.IsValid())
+	{
+		Spec.Data->DynamicGrantedTags.AddTag(Tags.Effects_Debuff_Stun);
+		Spec.Data->DynamicGrantedTags.AddTag(Tags.Effects_Debuff_Electrocute);
+		Spec.Data->AddDynamicAssetTag(Tags.Effects_Debuff);
+		const FActiveGameplayEffectHandle Handle = CasterASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
+		StunTailHandles.Add(Target, Handle);
+	}
+}
+
+void UAuraBeamSpell::ClearStunState()
+{
+	// 客户端没有施加过眩晕 GE（SyncStunWithCurrentTargets 服务器专用），这里只清本地记录
+	if (!OwnerActor || !OwnerActor->HasAuthority())
+	{
+		StunChannelHandles.Empty();
+		StunTailHandles.Empty();
+		return;
+	}
+
+	TArray<AActor*> Targets;
+	for (const auto& Pair : StunChannelHandles)
+	{
+		if (AActor* Target = Pair.Key.Get())
+		{
+			Targets.Add(Target);
+		}
+	}
+	for (AActor* Target : Targets)
+	{
+		RemoveStunFromTarget(Target);
+	}
+	StunChannelHandles.Empty();
+	StunTailHandles.Empty();
 }
 
 void UAuraBeamSpell::AddShockLoopCue()

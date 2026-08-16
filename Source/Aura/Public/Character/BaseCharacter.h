@@ -115,6 +115,10 @@ protected:
 	/** 燃烧 debuff 的表现（标签 Effects.Debuff.Burn 存在时激活） */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
 	TObjectPtr<UAuraNiagaraComponent> BurnNiagaraComponent;
+
+	/** 眩晕 debuff 的表现（标签 Effects.Debuff.Stun 存在时在头顶激活 NS_Stars） */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
+	TObjectPtr<UAuraNiagaraComponent> StunNiagaraComponent;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	USoundBase* DeathSound;
@@ -123,7 +127,11 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Class Defaults")
 	ECharacterClass CharacterClass = ECharacterClass::Warrior;
-	
+
+	/** 眩晕循环蒙太奇（各敌人骨骼不同，在各自敌人蓝图里配置；建议建 Loop 循环 Section） */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
+	TObjectPtr<UAnimMontage> StunMontage;
+
 private:
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GameplayEffectClass, float Level) const;
 	

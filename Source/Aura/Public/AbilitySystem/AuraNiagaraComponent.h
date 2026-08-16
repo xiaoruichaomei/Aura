@@ -25,6 +25,17 @@ public:
 	UPROPERTY(EditAnywhere, Category="Niagara")
 	FGameplayTag GameplayTag;
 
+	/** 标签持续期间周期性检查并重启特效（针对一次性不循环的资产，如眩晕星星；循环资产无需开启，开启也不会被打断） */
+	UPROPERTY(EditAnywhere, Category="Niagara")
+	bool bLoopWhileActive = false;
+
+	/** 标签持续期间检查系统是否已播完的间隔（秒） */
+	UPROPERTY(EditAnywhere, Category="Niagara", meta=(EditCondition="bLoopWhileActive"))
+	float LoopRestartInterval = 0.2f;
+
 private:
+	void InitializeTagBinding();
 	void OnTagChanged(const FGameplayTag Tag, int32 NewCount);
+	void RestartEffectIfComplete();
+	FTimerHandle LoopRestartTimerHandle;
 };

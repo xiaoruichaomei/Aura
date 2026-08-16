@@ -35,6 +35,10 @@ ABaseCharacter::ABaseCharacter()
 	BurnNiagaraComponent = CreateDefaultSubobject<UAuraNiagaraComponent>("BurnNiagaraComponent");
 	check(BurnNiagaraComponent);
 	BurnNiagaraComponent->SetupAttachment(GetMesh());
+
+	StunNiagaraComponent = CreateDefaultSubobject<UAuraNiagaraComponent>("StunNiagaraComponent");
+	check(StunNiagaraComponent);
+	StunNiagaraComponent->SetupAttachment(GetMesh());
 }
 
 void ABaseCharacter::BeginPlay()
@@ -51,6 +55,22 @@ void ABaseCharacter::BeginPlay()
 			if (UNiagaraSystem* FireSystem = LoadObject<UNiagaraSystem>(nullptr, TEXT("/Game/Assets/Effects/Fire/NS_Fire.NS_Fire")))
 			{
 				BurnNiagaraComponent->SetAsset(FireSystem);
+			}
+		}
+	}
+
+	// 眩晕特效：标签 Effects.Debuff.Stun 存在时显示转圈星星（NS_Stars），移除时自动停用。
+	// 出现位置不在此定位：用户在各自敌人蓝图里手动调整 StunNiagaraComponent 的 Relative Location。
+	if (StunNiagaraComponent)
+	{
+		StunNiagaraComponent->GameplayTag = FAuraGameplayTags::Get().Effects_Debuff_Stun;
+		// NS_Stars 是一次性不循环特效：标签持续期间自动检测播完并重启，形成持续显示（循环资产不会被打断）
+		StunNiagaraComponent->bLoopWhileActive = true;
+		if (!StunNiagaraComponent->GetAsset())
+		{
+			if (UNiagaraSystem* StarsSystem = LoadObject<UNiagaraSystem>(nullptr, TEXT("/Game/Assets/Effects/Stun/NS_Stars.NS_Stars")))
+			{
+				StunNiagaraComponent->SetAsset(StarsSystem);
 			}
 		}
 	}
