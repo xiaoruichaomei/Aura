@@ -39,6 +39,8 @@ ABaseCharacter::ABaseCharacter()
 	StunNiagaraComponent = CreateDefaultSubobject<UAuraNiagaraComponent>("StunNiagaraComponent");
 	check(StunNiagaraComponent);
 	StunNiagaraComponent->SetupAttachment(GetMesh());
+	StunNiagaraComponent->bDeactivateImmediately = true;
+	StunNiagaraComponent->InitialSimulationTime = 2.f;
 }
 
 void ABaseCharacter::BeginPlay()

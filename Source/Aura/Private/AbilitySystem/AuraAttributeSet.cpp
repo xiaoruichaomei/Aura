@@ -104,7 +104,7 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 	}
 	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute())
 	{
-		const float LocalIncomingDamage = GetIncomingDamage();
+		float LocalIncomingDamage = GetIncomingDamage();
 		SetIncomingDamage(0.f);
 
 		// 目标已死亡：忽略后续伤害（例如死亡后仍在 tick 的燃烧），
@@ -118,14 +118,32 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 		{
 			const FAuraGameplayTags& Tags = FAuraGameplayTags::Get();
 
+			if (Props.TargetASC && Props.TargetASC->HasMatchingGameplayTag(Tags.Effects_Passive_Halo_ShieldReady))
+			{
+				FGameplayTagContainer ShieldTags;
+				ShieldTags.AddTag(Tags.Effects_Passive_Halo_ShieldReady);
+				Props.TargetASC->RemoveActiveEffectsWithGrantedTags(ShieldTags);
+
+				FGameplayEventData ShieldConsumedPayload;
+				ShieldConsumedPayload.EventTag = Tags.Event_Passive_Halo_ShieldConsumed;
+				ShieldConsumedPayload.EventMagnitude = LocalIncomingDamage;
+				ShieldConsumedPayload.Instigator = Props.SourceAvatarActor;
+				ShieldConsumedPayload.Target = Props.TargetAvatarActor;
+				ShieldConsumedPayload.ContextHandle = Props.EffectContextHandle;
+				UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Props.TargetAvatarActor, Tags.Event_Passive_Halo_ShieldConsumed, ShieldConsumedPayload);
+				return;
+			}
+
 			// 防递归 + 防硬直门控：燃烧 tick 的 GE 带 Effects.Debuff 资产标签，普通伤害 GE_Damage 不带。
 			FGameplayTagContainer EffectAssetTags;
 			Data.EffectSpec.GetAllAssetTags(EffectAssetTags);
 			const bool bIsDebuffEffect = EffectAssetTags.HasTag(Tags.Effects_Debuff);
 			const bool bIsDebuffHit = UAuraAbilitySystemLibrary::IsDebuff(Props.EffectContextHandle);
 
-			const float NewHealth = GetHealth() - LocalIncomingDamage;
-			SetHealth(FMath::Clamp(NewHealth, 0.f, NewHealth));
+			const float HealthBeforeDamage = GetHealth();
+			const float NewHealth = HealthBeforeDamage - LocalIncomingDamage;
+			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
+			const float ActualDamageDealt = HealthBeforeDamage - GetHealth();
 
 			const bool bFatal = NewHealth <= 0.f;
 			if (bFatal)
@@ -154,17 +172,17 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 				{
 					const FGameplayTag DebuffDamageType = UAuraAbilitySystemLibrary::GetDebuffDamageType(Props.EffectContextHandle);
 					const TSubclassOf<UGameplayEffect>* DebuffEffectClass = Tags.DamageTypesToDebuffEffects.Find(DebuffDamageType);
-					if (DebuffEffectClass && *DebuffEffectClass && IsValid(Props.SourceASC))
+					const FGameplayTag* DebuffTag = Tags.DamageTypesToDebuffTags.Find(DebuffDamageType);
+					// A multi-hit spell must not create concurrent copies of the same DoT.
+					// The existing debuff remains active until its configured duration ends.
+					if (DebuffEffectClass && *DebuffEffectClass && DebuffTag && !Props.TargetASC->HasMatchingGameplayTag(*DebuffTag) && IsValid(Props.SourceASC))
 					{
 						const FGameplayEffectSpecHandle DebuffSpecHandle = Props.SourceASC->MakeOutgoingSpec(*DebuffEffectClass, 1.f, Props.EffectContextHandle);
 						if (DebuffSpecHandle.Data.IsValid())
 						{
 							FGameplayEffectSpec* MutableSpec = DebuffSpecHandle.Data.Get();
 							MutableSpec->AddDynamicAssetTag(Tags.Effects_Debuff); // 门控标签
-							if (const FGameplayTag* DebuffTag = Tags.DamageTypesToDebuffTags.Find(DebuffDamageType))
-							{
-								MutableSpec->DynamicGrantedTags.AddTag(*DebuffTag); // Effects.Debuff.Burn 授予目标
-							}
+							MutableSpec->DynamicGrantedTags.AddTag(*DebuffTag); // Effects.Debuff.Burn 授予目标
 							// 每跳伤害由 ExecCalc_Debuff 从 spec 的 SetByCaller 读取（执行时标签已注册）
 							UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(DebuffSpecHandle, Tags.Debuff_Damage, UAuraAbilitySystemLibrary::GetDebuffDamage(Props.EffectContextHandle));
 							// 锁定时长 + 直接设周期：GE CDO 无法在构造时烘焙 SetByCaller 标签，
@@ -187,8 +205,9 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 					const float KnockbackMagnitude = UAuraAbilitySystemLibrary::GetKnockbackMagnitude(Props.EffectContextHandle);
 					if (KnockbackMagnitude > 0.f && Props.TargetCharacter && Props.SourceAvatarActor && Props.TargetAvatarActor->HasAuthority())
 					{
+						const FVector ContextKnockbackForce = UAuraAbilitySystemLibrary::GetKnockbackForce(Props.EffectContextHandle);
 						const FVector Direction = (Props.TargetAvatarActor->GetActorLocation() - Props.SourceAvatarActor->GetActorLocation()).GetSafeNormal2D();
-						const FVector KnockbackVelocity = Direction * KnockbackMagnitude;
+						const FVector KnockbackVelocity = ContextKnockbackForce.IsNearlyZero() ? Direction * KnockbackMagnitude : ContextKnockbackForce;
 						Props.TargetCharacter->LaunchCharacter(KnockbackVelocity, true, true);
 
 						// 打断敌人追击：短暂暂停路径跟随，避免 AI 每帧重设速度把击退覆盖掉
@@ -214,18 +233,32 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 				}
 			}
 
+			if (ActualDamageDealt > 0.f && Props.SourceAvatarActor && Props.TargetAvatarActor && Props.SourceAvatarActor != Props.TargetAvatarActor)
+			{
+				const bool bSourceIsDead = Props.SourceAvatarActor->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(Props.SourceAvatarActor);
+				if (!bSourceIsDead)
+				{
+					FGameplayEventData DamageDealtPayload;
+					DamageDealtPayload.EventTag = Tags.Event_Combat_DamageDealt;
+					DamageDealtPayload.EventMagnitude = ActualDamageDealt;
+					DamageDealtPayload.Instigator = Props.SourceAvatarActor;
+					DamageDealtPayload.Target = Props.TargetAvatarActor;
+					DamageDealtPayload.ContextHandle = Props.EffectContextHandle;
+					UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Props.SourceAvatarActor, Tags.Event_Combat_DamageDealt, DamageDealtPayload);
+				}
+			}
+
 			if (Props.SourceCharacter != Props.TargetCharacter)
 			{
 				const bool bBlockedHit = UAuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
 				const bool bCriticalHit = UAuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
-				if (AAuraPlayerController* PC = Cast<AAuraPlayerController>(Props.SourceCharacter->Controller))
+				if (AAuraPlayerController* SourcePlayerController = Cast<AAuraPlayerController>(Props.SourceCharacter->Controller))
 				{
-					PC->ShowDamageNumber(LocalIncomingDamage, Props.TargetCharacter, bBlockedHit, bCriticalHit);
-					return;
+					SourcePlayerController->ShowDamageNumber(LocalIncomingDamage, Props.TargetCharacter, bBlockedHit, bCriticalHit);
 				}
-				if (AAuraPlayerController* PC = Cast<AAuraPlayerController>(Props.TargetCharacter->Controller))
+				else if (AAuraPlayerController* TargetPlayerController = Cast<AAuraPlayerController>(Props.TargetCharacter->Controller))
 				{
-					PC->ShowDamageNumber(LocalIncomingDamage, Props.TargetCharacter, bBlockedHit, bCriticalHit);
+					TargetPlayerController->ShowDamageNumber(LocalIncomingDamage, Props.TargetCharacter, bBlockedHit, bCriticalHit);
 				}
 			}
 		}

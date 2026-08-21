@@ -76,6 +76,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat")
 	FScalableFloat CooldownDuration;
 
+	/** 电击开始引导时一次性消耗的法力值。 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat")
+	FScalableFloat ManaCost;
+
+	/** 引导期间每个 DamageInterval 消耗的法力值。 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat")
+	FScalableFloat ManaCostPerTick;
+
 protected:
 	UPROPERTY(BlueprintReadWrite, Category="Beam")
 	FVector TargetLocation = FVector::ZeroVector;
@@ -99,6 +107,9 @@ protected:
 
 	/** 是否已开始施法（安全网用：若激活后超时未施法则强制结束，防止卡住） */
 	bool bCastStarted = false;
+
+	/** Prevents repeated damage ticks from charging mana more than once. */
+	bool bManaCostPaid = false;
 
 	/** 本次技能实例是否添加了 Player.Block，用于保证 loose tag 成对移除 */
 	bool bBlockTagAdded = false;
@@ -139,6 +150,9 @@ protected:
 	/** 对 TargetActor 及所有 AdditionalTargets 施加伤害（含周期性调用） */
 	UFUNCTION(BlueprintCallable)
 	void DamageChainTargets();
+
+	bool ConsumeMana(float Cost);
+	void ApplyDamageToCurrentTargets();
 
 	// <眩晕（Electrocute Stun）>
 	/** 电击期间持续存在的眩晕 GE（Infinite，授予 Effects.Debuff.Stun + Effects.Debuff.Electrocute） */

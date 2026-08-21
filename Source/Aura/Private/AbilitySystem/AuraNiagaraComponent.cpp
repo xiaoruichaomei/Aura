@@ -52,7 +52,7 @@ void UAuraNiagaraComponent::OnTagChanged(const FGameplayTag Tag, int32 NewCount)
 {
 	if (NewCount > 0)
 	{
-		Activate(true);
+		ActivateEffect();
 		// 一次性特效（如眩晕星星）播完会消失：标签持续期间周期检查，播完自动重启形成持续显示。
 		// 循环资产（如 NS_Fire）IsComplete 恒为 false，不会被打断重播。
 		if (bLoopWhileActive)
@@ -69,7 +69,23 @@ void UAuraNiagaraComponent::OnTagChanged(const FGameplayTag Tag, int32 NewCount)
 		{
 			World->GetTimerManager().ClearTimer(LoopRestartTimerHandle);
 		}
-		Deactivate();
+		if (bDeactivateImmediately)
+		{
+			DeactivateImmediate();
+		}
+		else
+		{
+			Deactivate();
+		}
+	}
+}
+
+void UAuraNiagaraComponent::ActivateEffect()
+{
+	Activate(true);
+	if (InitialSimulationTime > 0.f)
+	{
+		AdvanceSimulationByTime(InitialSimulationTime, FMath::Max(InitialSimulationTickDelta, UE_SMALL_NUMBER));
 	}
 }
 
@@ -80,7 +96,7 @@ void UAuraNiagaraComponent::RestartEffectIfComplete()
 	{
 		if (SystemController->IsComplete())
 		{
-			Activate(true);
+			ActivateEffect();
 		}
 	}
 }

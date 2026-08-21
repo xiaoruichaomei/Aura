@@ -23,6 +23,7 @@ FGameplayEffectSpecHandle UAuraDamageGameplayAbility::MakeDamageEffectSpec(const
 	{
 		AuraEffectContext->SetDeathImpulse(Params.DeathImpulse);
 		AuraEffectContext->SetKnockbackMagnitude(Params.KnockbackMagnitude);
+		AuraEffectContext->SetKnockbackForce(Params.KnockbackForce);
 	}
 
 	const FGameplayEffectSpecHandle DamageSpecHandle = GetAbilitySystemComponentFromActorInfo()->MakeOutgoingSpec(Params.DamageEffectClass, GetAbilityLevel(), ContextHandle);

@@ -6,6 +6,8 @@
 #include "UObject/Interface.h"
 #include "PlayerInterface.generated.h"
 
+class UMaterialInterface;
+
 // This class does not need to be modified.
 UINTERFACE(MinimalAPI)
 class UPlayerInterface : public UInterface
@@ -22,6 +24,12 @@ class AURA_API IPlayerInterface
 
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
+	UFUNCTION(BlueprintNativeEvent)
+	void ShowMagicCircle(UMaterialInterface* DecalMaterial);
+	UFUNCTION(BlueprintNativeEvent)
+	void HideMagicCircle();
+	UFUNCTION(BlueprintNativeEvent)
+	FVector GetMagicCircleLocation() const;
 	UFUNCTION(BlueprintNativeEvent)
 	void AddToXP(int32 XP);
 	

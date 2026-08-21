@@ -102,6 +102,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|GameplayEffects")
 	static void SetKnockbackMagnitude(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, float InKnockbackMagnitude);
+
+	UFUNCTION(BlueprintPure, Category = "AuraAbilitySystemLibrary|GameplayEffectContext")
+	static FVector GetKnockbackForce(const FGameplayEffectContextHandle& EffectContextHandle);
+
+	UFUNCTION(BlueprintCallable, Category = "AuraAbilitySystemLibrary|GameplayEffectContext")
+	static void SetKnockbackForce(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, FVector InKnockbackForce);
 	
 	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|GameplayMechanics")
 	static void GetLivePlayersWithinRadius(const UObject* WorldContextObject, TArray<AActor*>& OutOverlappingActors, UPARAM(ref) TArray<AActor*>& ActorsToIgnore, float Radius, const FVector& SphereLocation);

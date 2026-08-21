@@ -14,6 +14,8 @@ class UNiagaraSystem;
 class IEnemyInterface;
 class UAuraAbilitySystemComponent;
 class USplineComponent;
+class AMagicCircle;
+class UMaterialInterface;
 struct FHitResult;
 struct FGameplayTag;
 struct FInputActionValue;
@@ -35,6 +37,9 @@ public:
 
 	/** Caches the local cursor position and forwards it to the server for beam targeting. */
 	void SubmitBeamCursorLocation(const FVector& InLocation);
+	void ShowMagicCircle(UMaterialInterface* DecalMaterial);
+	void HideMagicCircle();
+	bool GetMagicCircleLocation(FVector& OutLocation) const;
 	
 	UFUNCTION(Client, Reliable)
 	void ShowDamageNumber(float DamageAmount, ACharacter* TargetCharacter, bool bBlockedHit, bool bCriticalHit);
@@ -43,8 +48,12 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastSpawnClickEffect(const FVector& CursorLocation);
 
+
 	UFUNCTION(Server, Unreliable)
 	void ServerSetBeamCursorLocation(FVector_NetQuantize InLocation);
+
+	UFUNCTION(Server, Unreliable)
+	void ServerSetMagicCircleLocation(FVector_NetQuantize InLocation);
 
 protected:
 	virtual void BeginPlay() override;
@@ -53,6 +62,7 @@ protected:
 private:
 	void Move(const FInputActionValue& InputActionValue);
 	void CursorTrace();
+	void UpdateMagicCircleLocation();
 	
 	void AbilityInputTagPressed(FGameplayTag InputTag);
 	void AbilityInputTagReleased(FGameplayTag InputTag);
@@ -79,6 +89,12 @@ private:
 	FHitResult CursorHit;
 	FVector BeamCursorLocation = FVector::ZeroVector;
 	bool bHasBeamCursorLocation = false;
+	FVector MagicCircleLocation = FVector::ZeroVector;
+	bool bHasMagicCircleLocation = false;
+	UPROPERTY()
+	TObjectPtr<AMagicCircle> MagicCircle;
+	UPROPERTY(EditDefaultsOnly, Category="Magic Circle")
+	TSubclassOf<AMagicCircle> MagicCircleClass;
 	
 	UPROPERTY(EditDefaultsOnly, Category="Input")
 	TObjectPtr<UAuraInputConfig> InputConfig;
@@ -113,4 +129,5 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="Click")
 	TObjectPtr<UNiagaraSystem> ClickNiagaraSystem;
+
 };

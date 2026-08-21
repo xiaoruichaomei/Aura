@@ -222,6 +222,41 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FName("Effects.Debuff.Freeze"),
 		FString("Freeze Debuff")
 		);
+	GameplayTags.GameplayCue_ArcaneShards = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("GameplayCue.ArcaneShards"), FString("Arcane Shards burst gameplay cue"));
+	GameplayTags.GameplayCue_FireBlast_Hit = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("GameplayCue.FireBlast.Hit"), FString("FireBlast local fireball hit gameplay cue"));
+	GameplayTags.GameplayCue_FireBlast_Explosion = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("GameplayCue.FireBlast.Explosion"), FString("FireBlast final explosion gameplay cue"));
+	GameplayTags.Event_Montage_ArcaneShards = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Event.Montage.ArcaneShards"), FString("Arcane Shards montage release event"));
+	GameplayTags.Player_Targeting_MagicCircle = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Player.Targeting.MagicCircle"), FString("Player is aiming a magic circle"));
+
+	GameplayTags.Effects_Passive_LifeSiphon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Effects.Passive.LifeSiphon"),
+		FString("Life Siphon passive is equipped")
+		);
+
+	GameplayTags.Effects_Passive_ManaSiphon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Effects.Passive.ManaSiphon"),
+		FString("Mana Siphon passive is equipped")
+		);
+
+	GameplayTags.Effects_Passive_Halo_ShieldReady = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Effects.Passive.Halo.ShieldReady"),
+		FString("Halo of Protection shield is ready")
+		);
+
+	GameplayTags.Event_Combat_DamageDealt = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Event.Combat.DamageDealt"),
+		FString("Reports actual health damage to its source")
+		);
+
+	GameplayTags.Event_Passive_Halo_ShieldConsumed = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Event.Passive.Halo.ShieldConsumed"),
+		FString("Halo shield was consumed and must recharge")
+		);
 
 	GameplayTags.Debuff_Chance = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Debuff.Chance"),
@@ -306,11 +341,17 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FName("Abilities.Fire.FireBolt"), 
 		FString("FireBolt Ability Tag")
 		);
+	GameplayTags.Abilities_Fire_FireBlast = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Fire.FireBlast"),
+		FString("FireBlast Ability Tag")
+		);
 	
 	GameplayTags.Abilities_Lightning_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Abilities.Lightning.Electrocute"), 
 		FString("Electrocute Ability Tag")
 		);
+	GameplayTags.Abilities_Arcane_ArcaneShards = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Arcane.ArcaneShards"), FString("Arcane Shards Ability Tag"));
 	
 	GameplayTags.Abilities_Passive_HaloOfProtection = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Abilities.Passive.HaloOfProtection"), 
@@ -331,6 +372,12 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FName("Cooldown.Fire.FireBolt"), 
 		FString("FireBolt Cooldown Tag")
 		);
+	GameplayTags.Cooldown_Fire_FireBlast = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Cooldown.Fire.FireBlast"),
+		FString("FireBlast Cooldown Tag")
+		);
+	GameplayTags.Cooldown_Arcane_ArcaneShards = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Cooldown.Arcane.ArcaneShards"), FString("Arcane Shards cooldown tag"));
 	
 	GameplayTags.CombatSocket_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("CombatSocket.Weapon"), 

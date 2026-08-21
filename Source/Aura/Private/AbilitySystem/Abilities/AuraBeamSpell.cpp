@@ -6,8 +6,8 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/AuraAbilitySystemLibrary.h"
+#include "AbilitySystem/AuraAttributeSet.h"
 #include "AbilitySystem/GameplayEffects/AuraElectrocuteStunGameplayEffect.h"
-#include "Aura/Aura.h"
 #include "CollisionShape.h"
 #include "AuraGameplayTags.h"
 #include "Character/BaseCharacter.h"
@@ -25,6 +25,9 @@ UAuraBeamSpell::UAuraBeamSpell()
 	// 眩晕 GE 默认指向本模块的 C++ 类（GA_Electrocute 蓝图可覆盖）
 	ElectrocuteStunChannelClass = UAuraElectrocuteStunChannel::StaticClass();
 	ElectrocuteStunTailClass = UAuraElectrocuteStunTail::StaticClass();
+	ManaCost = 10.f;
+	ManaCostPerTick = 5.f;
+	CooldownDuration = 5.f;
 }
 
 void UAuraBeamSpell::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
@@ -48,6 +51,7 @@ void UAuraBeamSpell::ActivateAbility(const FGameplayAbilitySpecHandle Handle, co
 
 	// 安全网：若 2 秒内未开始施法（目标数据没到等），强制结束，防止永久卡住
 	bCastStarted = false;
+	bManaCostPaid = false;
 	UWorld* World = GetWorld();
 	if (!World && OwnerActor) { World = OwnerActor->GetWorld(); }
 	if (!World && OwnerASC)   { World = OwnerASC->GetWorld(); }
@@ -118,26 +122,12 @@ void UAuraBeamSpell::EndAbility(const FGameplayAbilitySpecHandle Handle, const F
 		}
 	}
 
-	// 施放结束后进入冷却：期间 CanActivateAbility 返回 false，按住不会快速重激活
-	if (UAbilitySystemComponent* ASC = OwnerASC ? OwnerASC.Get() : GetAbilitySystemComponentFromActorInfo())
+	// 只有真正开始引导的施放才进入冷却。空地取消或目标数据超时不消耗资源。
+	// The active cooldown GE supplies both the cooldown tag and duration to the UI.
+	// Mana remains custom because this ability consumes it once on start and every tick.
+	if (bCastStarted && ActorInfo && ActorInfo->IsNetAuthority() && CooldownGameplayEffectClass)
 	{
-		const float CD = CooldownDuration.GetValueAtLevel(GetAbilityLevel());
-		if (CD > 0.f)
-		{
-			const FGameplayTag CooldownTag = FAuraGameplayTags::Get().Cooldown_Lightning_Electrocute;
-			ASC->AddLooseGameplayTag(CooldownTag);
-			if (UWorld* World = GetWorld())
-			{
-				FTimerHandle CooldownTimer;
-				World->GetTimerManager().SetTimer(CooldownTimer, [ASC, CooldownTag]()
-				{
-					if (IsValid(ASC))
-					{
-						ASC->RemoveLooseGameplayTag(CooldownTag);
-					}
-				}, CD, false);
-			}
-		}
+		ApplyCooldown(Handle, ActorInfo, ActivationInfo);
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
@@ -153,6 +143,12 @@ bool UAuraBeamSpell::CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	if (const UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr)
 	{
 		if (ASC->HasMatchingGameplayTag(FAuraGameplayTags::Get().Cooldown_Lightning_Electrocute))
+		{
+			return false;
+		}
+
+		const float RequiredMana = ManaCost.GetValueAtLevel(GetAbilityLevel());
+		if (ASC->GetNumericAttribute(UAuraAttributeSet::GetManaAttribute()) < RequiredMana)
 		{
 			return false;
 		}
@@ -304,6 +300,16 @@ void UAuraBeamSpell::StoreChainTargets()
 
 void UAuraBeamSpell::ApplyBeamDamage()
 {
+	if (!bManaCostPaid)
+	{
+		if (!ConsumeMana(ManaCost.GetValueAtLevel(GetAbilityLevel())))
+		{
+			EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+			return;
+		}
+		bManaCostPaid = true;
+	}
+
 	bCastStarted = true; // 已开始施法（安全网据此不再强制结束）
 
 	// Resolve the latest cursor target before creating the first cue. This prevents
@@ -330,7 +336,7 @@ void UAuraBeamSpell::ApplyBeamDamage()
 
 	if (IsValid(TargetActor))
 	{
-		DamageChainTargets();
+		ApplyDamageToCurrentTargets();
 	}
 	// 初始命中：链内目标进入眩晕（Channel）
 	SyncStunWithCurrentTargets();
@@ -495,6 +501,16 @@ bool UAuraBeamSpell::HaveSameCueTargets(AActor* OldPrimaryTarget, const TArray<T
 
 void UAuraBeamSpell::DamageChainTargets()
 {
+	if (!ConsumeMana(ManaCostPerTick.GetValueAtLevel(GetAbilityLevel())))
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+	ApplyDamageToCurrentTargets();
+}
+
+void UAuraBeamSpell::ApplyDamageToCurrentTargets()
+{
 	if (IsValid(TargetActor))
 	{
 		CauseDamage(TargetActor);
@@ -506,6 +522,23 @@ void UAuraBeamSpell::DamageChainTargets()
 			CauseDamage(Target);
 		}
 	}
+}
+
+bool UAuraBeamSpell::ConsumeMana(float Cost)
+{
+	if (Cost <= 0.f)
+	{
+		return true;
+	}
+
+	UAbilitySystemComponent* ASC = OwnerASC ? OwnerASC.Get() : GetAbilitySystemComponentFromActorInfo();
+	if (!ASC || ASC->GetNumericAttribute(UAuraAttributeSet::GetManaAttribute()) < Cost)
+	{
+		return false;
+	}
+
+	ASC->ApplyModToAttribute(UAuraAttributeSet::GetManaAttribute(), EGameplayModOp::Additive, -Cost);
+	return true;
 }
 
 void UAuraBeamSpell::SyncStunWithCurrentTargets()

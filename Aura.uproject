@@ -14,7 +14,8 @@
 				"UMG",
 				"CoreUObject",
 				"EnhancedInput",
-				"AIModule"
+				"AIModule",
+				"ModelViewViewModel"
 			]
 		}
 	],
@@ -49,6 +50,13 @@
 		{
 			"Name": "SemanticSearchToolset",
 			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
 		}
 	]
 }

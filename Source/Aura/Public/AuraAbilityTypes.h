@@ -30,6 +30,8 @@ public:
 	void SetDeathImpulse(const FVector& InImpulse) { DeathImpulse = InImpulse; }
 	float GetKnockbackMagnitude() const { return KnockbackMagnitude; }
 	void SetKnockbackMagnitude(float InMagnitude) { KnockbackMagnitude = InMagnitude; }
+	FVector GetKnockbackForce() const { return KnockbackForce; }
+	void SetKnockbackForce(const FVector& InForce) { KnockbackForce = InForce; }
 	
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
@@ -78,6 +80,9 @@ protected:
 
 	UPROPERTY()
 	float KnockbackMagnitude = 0.f;
+
+	UPROPERTY()
+	FVector KnockbackForce = FVector::ZeroVector;
 };
 
 template<>

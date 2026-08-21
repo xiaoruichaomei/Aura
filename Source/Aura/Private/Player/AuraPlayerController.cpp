@@ -22,18 +22,28 @@
 #include "GameFramework/Character.h"
 #include "NiagaraFunctionLibrary.h"
 #include "UI/Widget/DamageTextComponent.h"
+#include "Actor/MagicCircle.h"
+#include "UObject/ConstructorHelpers.h"
+#include "../Aura.h"
+#include "Materials/MaterialInterface.h"
 
 AAuraPlayerController::AAuraPlayerController()
 {
 	bReplicates = true;	// 当服务器上的actor发生变化时，服务器上的变化会复制发送到所有连接的客户端
 	
 	Spline = CreateDefaultSubobject<USplineComponent>("Spline");
+	static ConstructorHelpers::FClassFinder<AMagicCircle> MagicCircleBlueprint(TEXT("/Game/Blueprints/Actor/MagicCircle/BP_MagicCircle"));
+	if (MagicCircleBlueprint.Class)
+	{
+		MagicCircleClass = MagicCircleBlueprint.Class;
+	}
 }
 
 void AAuraPlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	CursorTrace();
+	UpdateMagicCircleLocation();
 	AutoRun();
 }
 
@@ -99,6 +109,14 @@ void AAuraPlayerController::Move(const FInputActionValue& InputActionValue)
 
 void AAuraPlayerController::CursorTrace()
 {
+	if (MagicCircle)
+	{
+		if (ThisActor)
+		{
+			ThisActor->SetActorHighlight(false);
+			ThisActor = nullptr;
+		}
+	}
 	GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
 	if (!CursorHit.bBlockingHit)
 	{
@@ -118,6 +136,71 @@ void AAuraPlayerController::CursorTrace()
 		{
 			ThisActor->SetActorHighlight(true);
 		}
+	}
+}
+
+void AAuraPlayerController::ShowMagicCircle(UMaterialInterface* DecalMaterial)
+{
+	if (!IsLocalController()) return;
+	HideMagicCircle();
+	if (!MagicCircleClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Magic circle Blueprint class is unavailable; using the native fallback."));
+		MagicCircleClass = AMagicCircle::StaticClass();
+	}
+	MagicCircle = GetWorld()->SpawnActor<AMagicCircle>(MagicCircleClass, FVector::ZeroVector, FRotator::ZeroRotator);
+	if (MagicCircle)
+	{
+		MagicCircle->SetDecalMaterial(DecalMaterial);
+		UpdateMagicCircleLocation();
+	}
+}
+
+void AAuraPlayerController::HideMagicCircle()
+{
+	if (IsValid(MagicCircle)) MagicCircle->Destroy();
+	MagicCircle = nullptr;
+	bHasMagicCircleLocation = false;
+}
+
+bool AAuraPlayerController::GetMagicCircleLocation(FVector& OutLocation) const
+{
+	if (!bHasMagicCircleLocation) return false;
+	OutLocation = MagicCircleLocation;
+	return true;
+}
+
+void AAuraPlayerController::UpdateMagicCircleLocation()
+{
+	if (!MagicCircle || !IsLocalController()) return;
+	FVector RayOrigin;
+	FVector RayDirection;
+	if (!DeprojectMousePositionToWorld(RayOrigin, RayDirection)) return;
+
+	FCollisionObjectQueryParams GroundObjects;
+	GroundObjects.AddObjectTypesToQuery(ECC_WorldStatic);
+	GroundObjects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(MagicCircleGround), false, GetPawn());
+	TArray<FHitResult> Hits;
+	GetWorld()->LineTraceMultiByObjectType(Hits, RayOrigin, RayOrigin + RayDirection * 50000.f, GroundObjects, QueryParams);
+	const FHitResult* GroundHit = Hits.FindByPredicate([](const FHitResult& Hit)
+	{
+		return Hit.bBlockingHit && Hit.ImpactNormal.Z >= 0.5f;
+	});
+	if (!GroundHit) return;
+
+	MagicCircleLocation = GroundHit->ImpactPoint + FVector(0.f, 0.f, 2.f);
+	bHasMagicCircleLocation = true;
+	MagicCircle->SetActorLocation(MagicCircleLocation);
+	ServerSetMagicCircleLocation(MagicCircleLocation);
+}
+
+void AAuraPlayerController::ServerSetMagicCircleLocation_Implementation(FVector_NetQuantize InLocation)
+{
+	if (!FVector(InLocation).ContainsNaN())
+	{
+		MagicCircleLocation = InLocation;
+		bHasMagicCircleLocation = true;
 	}
 }
 
@@ -185,6 +268,21 @@ bool AAuraPlayerController::IsInputBlocked() const
 
 void AAuraPlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 {
+	if (!InputTag.MatchesTagExact(FAuraGameplayTags::Get().Input_RMB) && MagicCircle)
+	{
+		FVector TargetLocation;
+		if (GetMagicCircleLocation(TargetLocation) && GetASC())
+		{
+			GetASC()->ConfirmArcaneShardsTarget(TargetLocation);
+		}
+		HideMagicCircle();
+		return;
+	}
+	if (!InputTag.MatchesTagExact(FAuraGameplayTags::Get().Input_RMB) && GetASC())
+	{
+		GetASC()->AbilityInputTagPressed(InputTag);
+		GetASC()->AbilityInputTagHeld(InputTag);
+	}
 	if (InputTag.MatchesTagExact(FAuraGameplayTags::Get().Input_RMB))
 	{
 		if (IsInputBlocked())

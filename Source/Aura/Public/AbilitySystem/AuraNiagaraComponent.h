@@ -33,9 +33,22 @@ public:
 	UPROPERTY(EditAnywhere, Category="Niagara", meta=(EditCondition="bLoopWhileActive"))
 	float LoopRestartInterval = 0.2f;
 
+	/** Immediately destroys active particles when the watched tag is removed. */
+	UPROPERTY(EditAnywhere, Category="Niagara")
+	bool bDeactivateImmediately = false;
+
+	/** Simulates the system before its first rendered frame to skip spawn transitions. */
+	UPROPERTY(EditAnywhere, Category="Niagara", meta=(ClampMin="0.0", Units="s"))
+	float InitialSimulationTime = 0.f;
+
+	/** Fixed simulation step used while prewarming the system. */
+	UPROPERTY(EditAnywhere, Category="Niagara", meta=(EditCondition="InitialSimulationTime > 0.0", ClampMin="0.001", Units="s"))
+	float InitialSimulationTickDelta = 0.0166667f;
+
 private:
 	void InitializeTagBinding();
 	void OnTagChanged(const FGameplayTag Tag, int32 NewCount);
+	void ActivateEffect();
 	void RestartEffectIfComplete();
 	FTimerHandle LoopRestartTimerHandle;
 };

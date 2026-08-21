@@ -73,13 +73,17 @@ public:
 	FGameplayTag Abilities_Type_None;
 	
 	FGameplayTag Abilities_Fire_FireBolt;
+	FGameplayTag Abilities_Fire_FireBlast;
 	FGameplayTag Abilities_Lightning_Electrocute;
+	FGameplayTag Abilities_Arcane_ArcaneShards;
 	
 	FGameplayTag Abilities_Passive_HaloOfProtection;
 	FGameplayTag Abilities_Passive_LifeSiphon;
 	FGameplayTag Abilities_Passive_ManaSiphon;
 	
 	FGameplayTag Cooldown_Fire_FireBolt;
+	FGameplayTag Cooldown_Fire_FireBlast;
+	FGameplayTag Cooldown_Arcane_ArcaneShards;
 	
 	FGameplayTag CombatSocket_Weapon;
 	FGameplayTag CombatSocket_RightHand;
@@ -95,6 +99,11 @@ public:
 	FGameplayTag Player_Block;
 
 	FGameplayTag GameplayCue_Electrocute;
+	FGameplayTag GameplayCue_ArcaneShards;
+	FGameplayTag GameplayCue_FireBlast_Hit;
+	FGameplayTag GameplayCue_FireBlast_Explosion;
+	FGameplayTag Event_Montage_ArcaneShards;
+	FGameplayTag Player_Targeting_MagicCircle;
 
 	FGameplayTag Cooldown_Lightning_Electrocute;
 
@@ -103,6 +112,12 @@ public:
 	FGameplayTag Effects_Debuff_Stun;
 	FGameplayTag Effects_Debuff_Electrocute;
 	FGameplayTag Effects_Debuff_Freeze;
+	FGameplayTag Effects_Passive_LifeSiphon;
+	FGameplayTag Effects_Passive_ManaSiphon;
+	FGameplayTag Effects_Passive_Halo_ShieldReady;
+
+	FGameplayTag Event_Combat_DamageDealt;
+	FGameplayTag Event_Passive_Halo_ShieldConsumed;
 
 	FGameplayTag Debuff_Chance;
 	FGameplayTag Debuff_Damage;

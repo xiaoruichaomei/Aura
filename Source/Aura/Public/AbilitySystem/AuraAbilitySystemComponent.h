@@ -28,7 +28,12 @@ public:
 	void AddCharacterAbilities(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbilities, const TArray<TSubclassOf<UGameplayAbility>>& PassiveAbilities);
 	
 	void AbilityInputTagReleased(const FGameplayTag& InputTag);
+	void AbilityInputTagPressed(const FGameplayTag& InputTag);
 	void AbilityInputTagHeld(const FGameplayTag& InputTag);
+	void ConfirmArcaneShardsTarget(const FVector& TargetLocation);
+
+	UFUNCTION(Server, Reliable)
+	void ServerConfirmArcaneShardsTarget(FVector_NetQuantize TargetLocation);
 	void ForEachAbility(const FForEachAbility& Delegate);
 	
 	void UpgradeAttribute(const FGameplayTag& AttributeTag);

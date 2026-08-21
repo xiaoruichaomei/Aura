@@ -6,6 +6,7 @@
 #include "AuraGameplayTags.h"
 #include "AbilitySystem/AuraAbilitySystemLibrary.h"
 #include "AbilitySystem/Abilities/AuraGameplayAbility.h"
+#include "AbilitySystem/Abilities/AuraArcaneShards.h"
 #include "AbilitySystem/Data/AbilityInfo.h"
 #include "Aura/AuraLogChannels.h"
 #include "Interface/PlayerInterface.h"
@@ -39,6 +40,22 @@ void UAuraAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag& In
 	}
 }
 
+void UAuraAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& InputTag)
+{
+	if (!InputTag.IsValid())
+	{
+		return;
+	}
+
+	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	{
+		if (AbilitySpec.GetDynamicSpecSourceTags().HasTagExact(InputTag) && AbilitySpec.IsActive())
+		{
+			AbilitySpecInputPressed(AbilitySpec);
+		}
+	}
+}
+
 void UAuraAbilitySystemComponent::AbilityInputTagHeld(const FGameplayTag& InputTag)
 {
 	if (!InputTag.IsValid())
@@ -49,10 +66,38 @@ void UAuraAbilitySystemComponent::AbilityInputTagHeld(const FGameplayTag& InputT
 	{
 		if (AbilitySpec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 		{
-			AbilitySpecInputPressed(AbilitySpec);
 			if (!AbilitySpec.IsActive())
 			{
 				TryActivateAbility(AbilitySpec.Handle);
+			}
+		}
+	}
+}
+
+void UAuraAbilitySystemComponent::ConfirmArcaneShardsTarget(const FVector& TargetLocation)
+{
+	if (TargetLocation.ContainsNaN()) return;
+	if (IsOwnerActorAuthoritative())
+	{
+		ServerConfirmArcaneShardsTarget_Implementation(TargetLocation);
+	}
+	else
+	{
+		ServerConfirmArcaneShardsTarget(TargetLocation);
+	}
+}
+
+void UAuraAbilitySystemComponent::ServerConfirmArcaneShardsTarget_Implementation(FVector_NetQuantize TargetLocation)
+{
+	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (!Spec.IsActive()) continue;
+		for (UGameplayAbility* Instance : Spec.GetAbilityInstances())
+		{
+			if (UAuraArcaneShards* ArcaneShards = Cast<UAuraArcaneShards>(Instance))
+			{
+				ArcaneShards->ConfirmTargetFromServer(FVector(TargetLocation));
+				return;
 			}
 		}
 	}

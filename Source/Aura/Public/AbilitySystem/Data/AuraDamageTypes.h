@@ -52,4 +52,7 @@ struct FAuraDamageEffectParams
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float KnockbackMagnitude = 0.f;
+
+	UPROPERTY(BlueprintReadOnly)
+	FVector KnockbackForce = FVector::ZeroVector;
 };

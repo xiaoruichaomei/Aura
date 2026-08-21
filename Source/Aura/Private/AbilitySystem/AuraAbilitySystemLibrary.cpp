@@ -289,6 +289,23 @@ void UAuraAbilitySystemLibrary::SetKnockbackMagnitude(FGameplayEffectContextHand
 	}
 }
 
+FVector UAuraAbilitySystemLibrary::GetKnockbackForce(const FGameplayEffectContextHandle& EffectContextHandle)
+{
+	if (const FAuraGameplayEffectContext* AuraEffectContext = static_cast<const FAuraGameplayEffectContext*>(EffectContextHandle.Get()))
+	{
+		return AuraEffectContext->GetKnockbackForce();
+	}
+	return FVector::ZeroVector;
+}
+
+void UAuraAbilitySystemLibrary::SetKnockbackForce(FGameplayEffectContextHandle& EffectContextHandle, FVector InKnockbackForce)
+{
+	if (FAuraGameplayEffectContext* AuraEffectContext = static_cast<FAuraGameplayEffectContext*>(EffectContextHandle.Get()))
+	{
+		AuraEffectContext->SetKnockbackForce(InKnockbackForce);
+	}
+}
+
 void UAuraAbilitySystemLibrary::GetLivePlayersWithinRadius(const UObject* WorldContextObject, TArray<AActor*>& OutOverlappingActors, TArray<AActor*>& ActorsToIgnore, float Radius, const FVector& SphereLocation)
 {
 	FCollisionQueryParams SphereParams;
