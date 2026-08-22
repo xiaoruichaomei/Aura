@@ -11,6 +11,7 @@ class USaveGame;
 class UMVVM_LoadSlot;
 class UAbilityInfo;
 class UCharacterClassInfo;
+struct FMapSaveData;
 /**
  * 
  */
@@ -24,6 +25,10 @@ public:
 	ULoadScreenSaveGame* GetSaveSlotData(const FString& SlotName, int32 SlotIndex);
 	static void DeleteSlot(const FString& SlotName, int32 SlotIndex);
 	void TravelToMap(UMVVM_LoadSlot* Slot);
+
+	UFUNCTION(BlueprintCallable)
+	bool SaveCurrentWorld();
+	void RestoreCurrentWorld();
 	
 	UPROPERTY(EditDefaultsOnly, Category="Character Class Defaults")
 	TObjectPtr<UCharacterClassInfo> CharacterClassInfo;
@@ -45,4 +50,13 @@ public:
 	
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+private:
+	void AutoSaveCurrentWorld();
+	void EnsureDefaultEnemySpawner();
+	ULoadScreenSaveGame* GetCurrentWorldSave() const;
+	bool bWorldEnemiesRestored = false;
+	FTimerHandle PlayerRestoreTimer;
+	FTimerHandle AutoSaveTimer;
 };

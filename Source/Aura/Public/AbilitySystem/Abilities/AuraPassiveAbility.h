@@ -25,6 +25,8 @@ public:
 	TSubclassOf<UGameplayEffect> PassiveStateEffectClass;
 
 protected:
+	virtual FString GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo) override;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Passive|Siphon")
 	FScalableFloat RestorePercent = 0.f;
 

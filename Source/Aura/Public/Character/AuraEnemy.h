@@ -9,10 +9,21 @@
 #include "UI/WidgetController/OverlayWidgetController.h"
 #include "AuraEnemy.generated.h"
 
+UENUM(BlueprintType)
+enum class EEnemyPoolState : uint8
+{
+	Inactive,
+	Active,
+	Dying
+};
+
 enum class ECharacterClass : uint8;
 class UWidgetComponent;
 class AAuraAIController;
 class UBehaviorTree;
+class AAuraEnemy;
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FEnemyDyingSignature, AAuraEnemy*);
 
 /**
  * 
@@ -26,10 +37,26 @@ public:
 	AAuraEnemy();
 	virtual void BeginPlay() override;
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	void HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	void StunTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	virtual void Die() override;
+
+	void SetPoolManaged(bool bInPoolManaged) { bPoolManaged = bInPoolManaged; }
+	void ActivateFromPool(const FTransform& InTransform, int32 InLevel = 1);
+	void DeactivateToPool();
+	bool IsPoolManaged() const { return bPoolManaged; }
+	EEnemyPoolState GetPoolState() const { return PoolState; }
+	FGuid GetSpawnInstanceId() const { return SpawnInstanceId; }
+	FGuid GetSpawnerId() const { return SpawnerId; }
+	void SetPoolIdentity(const FGuid& InSpawnInstanceId, const FGuid& InSpawnerId);
+	void SetPoolLevel(int32 InLevel);
+	int32 GetEnemyLevel() const { return Level; }
+	float GetCurrentHealth() const;
+	void RestoreHealth(float InHealth);
+
+	FEnemyDyingSignature OnEnemyDyingDelegate;
 
 	/** 眩晕或受击任一生效都停走，都解除才恢复（避免受击结束提前放行眩晕中的敌人） */
 	void UpdateMovementSpeed();
@@ -54,7 +81,7 @@ protected:
 	virtual void InitAbilityActorInfo() override;
 	virtual void InitializeDefaultAttributes() const override;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Class Defaults")
+	UPROPERTY(EditAnywhere, Replicated, BlueprintReadOnly, Category="Character Class Defaults")
 	int32 Level = 1;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
@@ -81,4 +108,23 @@ protected:
 	
 	UPROPERTY(BlueprintReadWrite, Category="Combat")
 	TObjectPtr<AActor> CombatTarget;
+
+	UPROPERTY(ReplicatedUsing=OnRep_PoolState, BlueprintReadOnly, Category="Pool")
+	EEnemyPoolState PoolState = EEnemyPoolState::Inactive;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Pool")
+	FGuid SpawnInstanceId;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Pool")
+	FGuid SpawnerId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Pool")
+	bool bPoolManaged = false;
+
+	UFUNCTION()
+	void OnRep_PoolState();
+
+	FTimerHandle PoolReturnTimer;
+
+	void SetPoolState(EEnemyPoolState NewState);
 };

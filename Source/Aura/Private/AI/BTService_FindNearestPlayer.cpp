@@ -5,6 +5,7 @@
 
 #include "AIController.h"
 #include "BehaviorTree/BTFunctionLibrary.h"
+#include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 
 void UBTService_FindNearestPlayer::TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
@@ -13,22 +14,24 @@ void UBTService_FindNearestPlayer::TickNode(UBehaviorTreeComponent& OwnerComp, u
 	
 	APawn* OwningPawn = AIOwner->GetPawn();
 	
-	const FName TargetTag = OwningPawn->ActorHasTag(FName("Player")) ? FName("Enemy") : FName("Player");
-	
-	TArray<AActor*> ActorsWithTag;
-	UGameplayStatics::GetAllActorsWithTag(OwningPawn, TargetTag, ActorsWithTag);
-	
 	float ClosestDistance = TNumericLimits<float>::Max();
 	AActor* ClosestActor = nullptr;
-	for (const auto Actor : ActorsWithTag)
+	// Do not rely on Blueprint Actor Tags here. Pooled enemies are spawned at
+	// runtime and may not inherit the same tag setup as level-placed enemies.
+	for (int32 PlayerIndex = 0; ; ++PlayerIndex)
 	{
-		if (IsValid(Actor))
+		APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(OwningPawn, PlayerIndex);
+		if (!PlayerPawn)
 		{
-			const float Distance = OwningPawn->GetDistanceTo(Actor);
+			break;
+		}
+		if (PlayerPawn != OwningPawn)
+		{
+			const float Distance = OwningPawn->GetDistanceTo(PlayerPawn);
 			if (Distance < ClosestDistance)
 			{
 				ClosestDistance = Distance;
-				ClosestActor = Actor;
+				ClosestActor = PlayerPawn;
 			}
 		}
 	}

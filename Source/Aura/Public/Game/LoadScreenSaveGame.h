@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
+#include "Game/WorldSaveTypes.h"
 #include "LoadScreenSaveGame.generated.h"
 
 UENUM(BlueprintType)
@@ -24,6 +25,9 @@ class AURA_API ULoadScreenSaveGame : public USaveGame
 	GENERATED_BODY()
 	
 public:
+	UPROPERTY(SaveGame)
+	int32 SaveVersion = 1;
+
 	UPROPERTY()
 	FString SlotName = FString();
 	
@@ -38,4 +42,7 @@ public:
 	
 	UPROPERTY()
 	TEnumAsByte<ESaveSlotStatus> SaveSlotStatus = Vacant;
+
+	UPROPERTY(SaveGame)
+	TMap<FName, FMapSaveData> SavedMaps;
 };

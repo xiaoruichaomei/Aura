@@ -26,6 +26,6 @@ public:
 protected:
 	virtual FString GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo);
 	
-	int32 GetManaCost(int32 Level = 1.f) const;
-	float GetCooldown(int32 Level = 1.f) const;
+	virtual int32 GetManaCost(int32 Level = 1) const;
+	virtual float GetCooldown(int32 Level = 1) const;
 };

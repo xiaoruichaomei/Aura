@@ -11,6 +11,19 @@ UAuraArcaneShards::UAuraArcaneShards()
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 }
 
+FString UAuraArcaneShards::GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo)
+{
+	FString Description = Super::GetResolvedDescription(Level, AbilityInfo);
+	const int32 ShardCount = FMath::Clamp(3 + 2 * (Level - 1), 3, MaxShardPoints);
+	Description = Description.Replace(TEXT("{ShardCount}"), *FString::FromInt(ShardCount));
+	Description = Description.Replace(TEXT("{PointCount}"), *FString::FromInt(ShardCount));
+	Description = Description.Replace(TEXT("{CastRange}"), *FString::FromInt(FMath::RoundToInt(MaxCastRange)));
+	Description = Description.Replace(TEXT("{InnerRadius}"), *FString::FromInt(FMath::RoundToInt(InnerRadius)));
+	Description = Description.Replace(TEXT("{OuterRadius}"), *FString::FromInt(FMath::RoundToInt(OuterRadius)));
+	Description = Description.Replace(TEXT("{MinimumDamagePercent}"), *FString::FromInt(FMath::RoundToInt(MinimumDamagePercent * 100.f)));
+	return Description;
+}
+
 void UAuraArcaneShards::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {

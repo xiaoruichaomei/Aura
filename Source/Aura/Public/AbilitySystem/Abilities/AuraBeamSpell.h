@@ -85,6 +85,10 @@ public:
 	FScalableFloat ManaCostPerTick;
 
 protected:
+	virtual FString GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo) override;
+	virtual int32 GetManaCost(int32 Level = 1) const override;
+	virtual float GetCooldown(int32 Level = 1) const override;
+
 	UPROPERTY(BlueprintReadWrite, Category="Beam")
 	FVector TargetLocation = FVector::ZeroVector;
 

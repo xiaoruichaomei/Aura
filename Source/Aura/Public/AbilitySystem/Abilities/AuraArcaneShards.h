@@ -25,6 +25,8 @@ public:
 	void ConfirmTargetFromServer(const FVector& Center);
 
 protected:
+	virtual FString GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo) override;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Arcane Shards|Targeting")
 	TObjectPtr<UMaterialInterface> MagicCircleMaterial;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Arcane Shards|Targeting")

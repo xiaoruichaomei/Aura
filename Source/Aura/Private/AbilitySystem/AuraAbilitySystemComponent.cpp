@@ -25,6 +25,115 @@ void UAuraAbilitySystemComponent::AddCharacterAbilities(const TArray<TSubclassOf
 	AddPassiveAbilities(PassiveAbilities);
 }
 
+void UAuraAbilitySystemComponent::ExportSavedAbilities(TArray<FSavedAbilityData>& OutAbilities)
+{
+	FScopedAbilityListLock ActiveScopeLock(*this);
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		const FGameplayTag AbilityTag = GetAbilityTagFromSpec(Spec);
+		if (!AbilityTag.IsValid())
+		{
+			continue;
+		}
+		FSavedAbilityData Data;
+		Data.AbilityTag = AbilityTag;
+		Data.AbilityLevel = Spec.Level;
+		Data.StatusTag = GetStatusFromSpec(Spec);
+		Data.SlotTag = GetInputTagFromSpec(Spec);
+		OutAbilities.Add(Data);
+	}
+}
+
+void UAuraAbilitySystemComponent::RestoreSavedAbilities(const TArray<FSavedAbilityData>& SavedAbilities)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	const UAbilityInfo* AbilityInfo = UAuraAbilitySystemLibrary::GetAbilityInfo(GetAvatarActor());
+	for (const FSavedAbilityData& Data : SavedAbilities)
+	{
+		if (!Data.AbilityTag.IsValid())
+		{
+			continue;
+		}
+		FGameplayAbilitySpec* Spec = GetSpecFromAbilityTag(Data.AbilityTag);
+		if (!Spec && AbilityInfo)
+		{
+			const FAuraAbilityInfo Info = AbilityInfo->FindAbilityInfoForTag(Data.AbilityTag);
+			if (Info.Ability)
+			{
+				GiveAbility(FGameplayAbilitySpec(Info.Ability, FMath::Max(1, Data.AbilityLevel)));
+				Spec = GetSpecFromAbilityTag(Data.AbilityTag);
+			}
+		}
+		if (!Spec)
+		{
+			continue;
+		}
+		Spec->Level = FMath::Max(1, Data.AbilityLevel);
+		const FGameplayTagContainer ExistingTags = Spec->GetDynamicSpecSourceTags();
+		for (const FGameplayTag& Tag : ExistingTags)
+		{
+			if (Tag.MatchesTag(FGameplayTag::RequestGameplayTag(FName("Input"))) || Tag.MatchesTag(FGameplayTag::RequestGameplayTag(FName("Abilities.Status"))))
+			{
+				Spec->GetDynamicSpecSourceTags().RemoveTag(Tag);
+			}
+		}
+		if (Data.SlotTag.IsValid())
+		{
+			Spec->GetDynamicSpecSourceTags().AddTag(Data.SlotTag);
+		}
+		FGameplayTag RestoredStatus = Data.StatusTag;
+		if (Data.SlotTag.IsValid())
+		{
+			// A slotted ability is necessarily equipped. This also repairs old
+			// saves that contained an input slot but no valid status tag.
+			RestoredStatus = FAuraGameplayTags::Get().Abilities_Status_Equipped;
+		}
+		if (RestoredStatus.IsValid())
+		{
+			Spec->GetDynamicSpecSourceTags().AddTag(RestoredStatus);
+		}
+		MarkAbilitySpecDirty(*Spec);
+	}
+
+	// Startup abilities may be absent from old saves. Preserve their default
+	// slot and equipped state instead of presenting them as locked in the UI.
+	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		const UAuraGameplayAbility* AuraAbility = Cast<UAuraGameplayAbility>(Spec.Ability);
+		if (!AuraAbility || !AuraAbility->StartupInputTag.IsValid())
+		{
+			continue;
+		}
+		if (!GetInputTagFromSpec(Spec).IsValid())
+		{
+			Spec.GetDynamicSpecSourceTags().AddTag(AuraAbility->StartupInputTag);
+		}
+		if (!GetStatusFromSpec(Spec).IsValid())
+		{
+			Spec.GetDynamicSpecSourceTags().AddTag(FAuraGameplayTags::Get().Abilities_Status_Equipped);
+		}
+		MarkAbilitySpecDirty(Spec);
+	}
+
+	bStartupAbilitiesGiven = true;
+	AbilitiesGiven.Broadcast();
+	if (GetNetMode() != NM_Standalone)
+	{
+		ClientRefreshAbilityUI();
+	}
+	ActivateEquippedPassiveAbilities();
+}
+
+void UAuraAbilitySystemComponent::ClientRefreshAbilityUI_Implementation()
+{
+	bStartupAbilitiesGiven = true;
+	AbilitiesGiven.Broadcast();
+}
+
 void UAuraAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag& InputTag)
 {
 	if (!InputTag.IsValid())
@@ -537,6 +646,14 @@ void UAuraAbilitySystemComponent::AddPassiveAbilities(const TArray<TSubclassOf<U
 	for (const auto& AbilityClass : PassiveAbilities)
 	{
 		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, 1);
+		if (const UAuraGameplayAbility* AuraAbility = Cast<UAuraGameplayAbility>(AbilitySpec.Ability))
+		{
+			if (AuraAbility->StartupInputTag.IsValid())
+			{
+				AbilitySpec.GetDynamicSpecSourceTags().AddTag(AuraAbility->StartupInputTag);
+			}
+			AbilitySpec.GetDynamicSpecSourceTags().AddTag(FAuraGameplayTags::Get().Abilities_Status_Equipped);
+		}
 		GiveAbilityAndActivateOnce(AbilitySpec);
 	}
 }

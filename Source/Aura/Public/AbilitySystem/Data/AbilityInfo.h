@@ -45,9 +45,9 @@ struct FAuraAbilityInfo
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FText AbilityName;
 
-	// 技能描述文本,支持占位符:
-	//   {Level} {ManaCost} {Cooldown} 所有技能可用
-	//   {Damage} 伤害类技能 {NumProjectiles} 投射物技能
+	// Ability description text. Supported placeholders include:
+	//   {Level}, {ManaCost}, and {Cooldown} for all abilities.
+	//   Ability-specific values such as {Damage} and {NumProjectiles}.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FText AbilityDescription;
 };

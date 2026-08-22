@@ -14,6 +14,29 @@ UAuraPassiveAbility::UAuraPassiveAbility()
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 }
 
+FString UAuraPassiveAbility::GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo)
+{
+	FString Description = Super::GetResolvedDescription(Level, AbilityInfo);
+	const FAuraGameplayTags& Tags = FAuraGameplayTags::Get();
+	const FGameplayTag AbilityTag = AbilityInfo.AbilityTag;
+	if (AbilityTag.MatchesTagExact(Tags.Abilities_Passive_HaloOfProtection))
+	{
+		const float RechargeSeconds = FMath::Max(3.f, ShieldRechargeTime.GetValueAtLevel(Level));
+		Description = Description.Replace(TEXT("{RechargeTime}"), *FString::SanitizeFloat(RechargeSeconds, 1));
+	}
+	else if (AbilityTag.MatchesTagExact(Tags.Abilities_Passive_LifeSiphon) ||
+		AbilityTag.MatchesTagExact(Tags.Abilities_Passive_ManaSiphon))
+	{
+		const bool bLifeSiphon = AbilityTag.MatchesTagExact(Tags.Abilities_Passive_LifeSiphon);
+		const float DefaultPercent = bLifeSiphon ? 0.05f + 0.02f * (Level - 1) : 0.03f + 0.01f * (Level - 1);
+		const float ConfiguredPercent = RestorePercent.GetValueAtLevel(Level);
+		const float MaxPercent = bLifeSiphon ? 0.25f : 0.15f;
+		const float Percent = FMath::Clamp(ConfiguredPercent > 0.f ? ConfiguredPercent : DefaultPercent, 0.f, MaxPercent);
+		Description = Description.Replace(TEXT("{RestorePercent}"), *FString::FromInt(FMath::RoundToInt(Percent * 100.f)));
+	}
+	return Description;
+}
+
 void UAuraPassiveAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);

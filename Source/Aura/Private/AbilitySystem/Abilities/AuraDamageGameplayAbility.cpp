@@ -81,6 +81,15 @@ FTaggedMontage UAuraDamageGameplayAbility::GetRandomTaggedMontageFromArray(const
 FString UAuraDamageGameplayAbility::GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo)
 {
 	FString Description = Super::GetResolvedDescription(Level, AbilityInfo);
-	int32 TotalDamage = FMath::RoundToInt(DamageEffectParams.BaseDamage.GetValueAtLevel(Level));
-	return Description.Replace(TEXT("{Damage}"), *FString::FromInt(TotalDamage));
+	const int32 TotalDamage = FMath::RoundToInt(DamageEffectParams.BaseDamage.GetValueAtLevel(Level));
+	const int32 DebuffChance = FMath::RoundToInt(DamageEffectParams.DebuffChance.GetValueAtLevel(Level));
+	const int32 DebuffDamage = FMath::RoundToInt(DamageEffectParams.DebuffDamage.GetValueAtLevel(Level));
+	const FString DebuffDuration = FString::SanitizeFloat(DamageEffectParams.DebuffDuration.GetValueAtLevel(Level), 1);
+	const FString DebuffFrequency = FString::SanitizeFloat(DamageEffectParams.DebuffFrequency.GetValueAtLevel(Level), 1);
+	Description = Description.Replace(TEXT("{Damage}"), *FString::FromInt(TotalDamage));
+	Description = Description.Replace(TEXT("{DebuffChance}"), *FString::FromInt(DebuffChance));
+	Description = Description.Replace(TEXT("{DebuffDamage}"), *FString::FromInt(DebuffDamage));
+	Description = Description.Replace(TEXT("{DebuffDuration}"), *DebuffDuration);
+	Description = Description.Replace(TEXT("{DebuffFrequency}"), *DebuffFrequency);
+	return Description;
 }

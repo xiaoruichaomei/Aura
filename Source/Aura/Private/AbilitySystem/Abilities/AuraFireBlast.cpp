@@ -35,6 +35,17 @@ UAuraFireBlast::UAuraFireBlast()
 		FSoftObjectPath(TEXT("/Game/Blueprints/Actor/FireBlast/BP_FireBall.BP_FireBall_C")));
 }
 
+FString UAuraFireBlast::GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo)
+{
+	FString Description = Super::GetResolvedDescription(Level, AbilityInfo);
+	const int32 BaseDamage = FMath::RoundToInt(DamageEffectParams.BaseDamage.GetValueAtLevel(Level));
+	const int32 ExplosionDamage = FMath::RoundToInt(BaseDamage * ExplosionDamageMultiplier);
+	Description = Description.Replace(TEXT("{FireBallCount}"), *FString::FromInt(FMath::Clamp(NumFireBalls, 1, 24)));
+	Description = Description.Replace(TEXT("{ExplosionDamage}"), *FString::FromInt(ExplosionDamage));
+	Description = Description.Replace(TEXT("{ExplosionRadius}"), *FString::FromInt(FMath::RoundToInt(ExplosionRadius)));
+	return Description;
+}
+
 void UAuraFireBlast::PostLoad()
 {
 	Super::PostLoad();

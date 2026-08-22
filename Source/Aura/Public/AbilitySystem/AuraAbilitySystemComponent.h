@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
+#include "Game/WorldSaveTypes.h"
 #include "AuraAbilitySystemComponent.generated.h"
 
 class UAuraAbilitySystemComponent;
@@ -31,6 +32,11 @@ public:
 	void AbilityInputTagPressed(const FGameplayTag& InputTag);
 	void AbilityInputTagHeld(const FGameplayTag& InputTag);
 	void ConfirmArcaneShardsTarget(const FVector& TargetLocation);
+	void ExportSavedAbilities(TArray<FSavedAbilityData>& OutAbilities);
+	void RestoreSavedAbilities(const TArray<FSavedAbilityData>& SavedAbilities);
+
+	UFUNCTION(Client, Reliable)
+	void ClientRefreshAbilityUI();
 
 	UFUNCTION(Server, Reliable)
 	void ServerConfirmArcaneShardsTarget(FVector_NetQuantize TargetLocation);

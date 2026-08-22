@@ -30,6 +30,28 @@ UAuraBeamSpell::UAuraBeamSpell()
 	CooldownDuration = 5.f;
 }
 
+FString UAuraBeamSpell::GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo)
+{
+	FString Description = Super::GetResolvedDescription(Level, AbilityInfo);
+	const int32 ChainTargetCount = FMath::Max(0, FMath::Min(Level, MaxChainTargets));
+	Description = Description.Replace(TEXT("{ChainTargets}"), *FString::FromInt(ChainTargetCount));
+	Description = Description.Replace(TEXT("{TotalTargets}"), *FString::FromInt(ChainTargetCount + 1));
+	Description = Description.Replace(TEXT("{TickInterval}"), *FString::SanitizeFloat(DamageInterval, 1));
+	Description = Description.Replace(TEXT("{ManaPerTick}"), *FString::FromInt(FMath::RoundToInt(ManaCostPerTick.GetValueAtLevel(Level))));
+	Description = Description.Replace(TEXT("{ChainRadius}"), *FString::FromInt(FMath::RoundToInt(AdditionalTargetRadius)));
+	return Description;
+}
+
+int32 UAuraBeamSpell::GetManaCost(int32 Level) const
+{
+	return FMath::Max(0, FMath::RoundToInt(ManaCost.GetValueAtLevel(Level)));
+}
+
+float UAuraBeamSpell::GetCooldown(int32 Level) const
+{
+	return FMath::Max(0.f, CooldownDuration.GetValueAtLevel(Level));
+}
+
 void UAuraBeamSpell::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	// 施法期间阻塞其他技能（带 Abilities 标签的技能不能再激活）

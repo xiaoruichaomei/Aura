@@ -29,6 +29,8 @@ public:
 		const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
 protected:
+	virtual FString GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo) override;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="FireBlast")
 	TSoftClassPtr<class AAuraFireBall> FireBallClass;
 
