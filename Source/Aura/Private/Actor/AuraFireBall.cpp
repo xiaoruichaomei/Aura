@@ -12,6 +12,7 @@
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Subsystem/AuraProjectilePoolSubsystem.h"
 
 AAuraFireBall::AAuraFireBall()
 {
@@ -46,11 +47,15 @@ AAuraFireBall::AAuraFireBall()
 void AAuraFireBall::BeginPlay()
 {
 	Super::BeginPlay();
-	if (LifeSpan > 0.f)
+	if (!bPoolManaged && LifeSpan > 0.f)
 	{
 		SetLifeSpan(LifeSpan);
 	}
-	Sphere->OnComponentBeginOverlap.AddDynamic(this, &AAuraFireBall::OnSphereOverlap);
+	Sphere->OnComponentBeginOverlap.AddUniqueDynamic(this, &AAuraFireBall::OnSphereOverlap);
+	if (bPoolManaged)
+	{
+		OnRep_PoolActive();
+	}
 }
 
 void AAuraFireBall::Tick(float DeltaSeconds)
@@ -79,7 +84,8 @@ void AAuraFireBall::Tick(float DeltaSeconds)
 		AActor* Source = SourceActor.Get();
 		if (!IsValid(Source))
 		{
-			Destroy();
+			ReportFinished();
+			ReturnToPool();
 			return;
 		}
 
@@ -101,9 +107,98 @@ void AAuraFireBall::Tick(float DeltaSeconds)
 
 void AAuraFireBall::Destroyed()
 {
-	ReportFinished();
-	SetFireBallState(EFireBallState::Destroyed);
+	if (!bPoolManaged)
+	{
+		ReportFinished();
+		SetFireBallState(EFireBallState::Destroyed);
+	}
 	Super::Destroyed();
+}
+
+void AAuraFireBall::ActivateFromPool(const FTransform& Transform, AActor* NewOwner, APawn* NewInstigator)
+{
+	if (!bPoolManaged || !HasAuthority())
+	{
+		return;
+	}
+	GetWorldTimerManager().ClearTimer(PoolLifeTimer);
+	SetOwner(NewOwner);
+	SetInstigator(NewInstigator);
+	SetActorTransform(Transform, false, nullptr, ETeleportType::TeleportPhysics);
+	SourceActor = nullptr;
+	DamageEffectSpecHandle = FGameplayEffectSpecHandle();
+	OutgoingHitActors.Reset();
+	ReturningHitActors.Reset();
+	LocalVisualHitActors.Reset();
+	OutgoingElapsed = 0.f;
+	ReturningElapsed = 0.f;
+	bFinishReported = false;
+	State = EFireBallState::Outgoing;
+	bPoolActive = true;
+	OnRep_PoolActive();
+	GetWorldTimerManager().SetTimer(PoolLifeTimer, this, &ThisClass::HandleLifeExpired, LifeSpan, false);
+	ForceNetUpdate();
+}
+
+void AAuraFireBall::DeactivateToPool()
+{
+	GetWorldTimerManager().ClearTimer(PoolLifeTimer);
+	SetActorTickEnabled(false);
+	bPoolActive = false;
+	Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (FireEffect)
+	{
+		FireEffect->DeactivateImmediate();
+	}
+	SetActorHiddenInGame(true);
+	SetActorEnableCollision(false);
+	SourceActor = nullptr;
+	DamageEffectSpecHandle = FGameplayEffectSpecHandle();
+	OutgoingHitActors.Reset();
+	ReturningHitActors.Reset();
+	LocalVisualHitActors.Reset();
+	OnStateChanged.Clear();
+	OnFireBallFinished.Clear();
+	SetOwner(nullptr);
+	SetInstigator(nullptr);
+	ForceNetUpdate();
+}
+
+void AAuraFireBall::ReturnToPool()
+{
+	if (bPoolManaged)
+	{
+		if (UAuraProjectilePoolSubsystem* Pool = GetWorld()->GetSubsystem<UAuraProjectilePoolSubsystem>())
+		{
+			Pool->ReleaseFireBall(this);
+			return;
+		}
+	}
+	Destroy();
+}
+
+void AAuraFireBall::HandleLifeExpired()
+{
+	ReportFinished();
+	ReturnToPool();
+}
+
+void AAuraFireBall::OnRep_PoolActive()
+{
+	SetActorHiddenInGame(!bPoolActive);
+	SetActorEnableCollision(bPoolActive);
+	Sphere->SetCollisionEnabled(bPoolActive ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
+	if (FireEffect)
+	{
+		if (bPoolActive)
+		{
+			FireEffect->Activate(true);
+		}
+		else
+		{
+			FireEffect->DeactivateImmediate();
+		}
+	}
 }
 
 void AAuraFireBall::SetSourceActor(AActor* NewSourceActor)
@@ -196,12 +291,16 @@ void AAuraFireBall::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AAuraFireBall, SourceActor);
 	DOREPLIFETIME(AAuraFireBall, State);
+	DOREPLIFETIME(AAuraFireBall, bPoolActive);
 }
 
 void AAuraFireBall::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!IsValid(OtherActor) || OtherActor == SourceActor.Get())
+	// Pool activation and replicated SourceActor assignment are separate state
+	// updates. Reject all ownership identities so a returning ball can never
+	// damage its caster during that short transition.
+	if (!IsValid(OtherActor) || OtherActor == SourceActor.Get() || OtherActor == GetOwner() || OtherActor == GetInstigator())
 	{
 		return;
 	}

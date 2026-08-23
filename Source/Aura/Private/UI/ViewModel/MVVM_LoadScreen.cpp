@@ -36,9 +36,23 @@ void UMVVM_LoadScreen::LoadData()
 		
 		const FString PlayerName = SaveObject->PlayerName;
 		TEnumAsByte<ESaveSlotStatus> SaveSlotStatus = SaveObject->SaveSlotStatus;
+		int32 PlayerLevel = SaveObject->PlayerLevel;
+		if (PlayerLevel <= 1 && !SaveObject->MapName.IsEmpty())
+		{
+			// Backward compatibility for saves created before the slot summary
+			// stored the level separately.
+			if (const FMapSaveData* MapData = SaveObject->SavedMaps.Find(FName(*SaveObject->MapName)))
+			{
+				if (MapData->PlayerData.bValid)
+				{
+					PlayerLevel = MapData->PlayerData.Level;
+				}
+			}
+		}
 		
 		LoadSlot.Value->SlotStatus = SaveSlotStatus;
 		LoadSlot.Value->SetPlayerName(PlayerName);
+		LoadSlot.Value->SetPlayerLevel(PlayerLevel);
 		LoadSlot.Value->InitializeSlot();
 		LoadSlot.Value->SetMapName(SaveObject->MapName);
 	}
@@ -60,6 +74,7 @@ void UMVVM_LoadScreen::NewSlotButtonPressed(int32 Slot, const FString& EnteredNa
 	
 	LoadSlots[Slot]->SetMapName(TEXT("Dungeon"));
 	LoadSlots[Slot]->SetPlayerName(EnteredName);
+	LoadSlots[Slot]->SetPlayerLevel(1);
 	LoadSlots[Slot]->SlotStatus = Taken;
 	
 	AuraGameMode->SaveSlotData(LoadSlots[Slot], Slot);

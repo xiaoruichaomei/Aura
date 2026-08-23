@@ -19,6 +19,8 @@ enum class EEnemyPoolState : uint8
 
 enum class ECharacterClass : uint8;
 class UWidgetComponent;
+class UMaterialInterface;
+class UAnimInstance;
 class AAuraAIController;
 class UBehaviorTree;
 class AAuraEnemy;
@@ -57,6 +59,10 @@ public:
 	void RestoreHealth(float InHealth);
 
 	FEnemyDyingSignature OnEnemyDyingDelegate;
+
+	/** Stop/reset Blueprint death timelines here. Native mesh/material state is restored afterwards. */
+	UFUNCTION(BlueprintImplementableEvent, Category="Pool", DisplayName="Reset Pool Blueprint State")
+	void ResetPoolBlueprintState();
 
 	/** 眩晕或受击任一生效都停走，都解除才恢复（避免受击结束提前放行眩晕中的敌人） */
 	void UpdateMovementSpeed();
@@ -126,5 +132,21 @@ protected:
 
 	FTimerHandle PoolReturnTimer;
 
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInterface>> InitialMeshMaterials;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInterface>> InitialWeaponMaterials;
+
+	UPROPERTY(Transient)
+	TSubclassOf<UAnimInstance> InitialAnimClass;
+
+	FTransform InitialMeshRelativeTransform;
+	FTransform InitialWeaponRelativeTransform;
+	FName InitialWeaponAttachSocket;
+	bool bPoolDefaultsCaptured = false;
+
 	void SetPoolState(EEnemyPoolState NewState);
+	void CapturePoolDefaults();
+	void ResetNativePoolState();
 };

@@ -78,4 +78,5 @@ private:
 
 	TMap<UClass*, FPoolBucket> Buckets;
 	bool bPoolReady = false;
+	bool bIsShuttingDown = false;
 };

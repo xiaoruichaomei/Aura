@@ -29,6 +29,8 @@ AAuraGameplayCueNotifyActor::AAuraGameplayCueNotifyActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = true;
+	bAutoDestroyOnRemove = true;
+	NumPreallocatedInstances = 8;
 
 	BeamNiagaraComponent = CreateDefaultSubobject<UNiagaraComponent>("BeamNiagaraComponent");
 	SetRootComponent(BeamNiagaraComponent);
@@ -157,4 +159,31 @@ bool AAuraGameplayCueNotifyActor::OnRemove_Implementation(AActor* MyTarget, cons
 	BeamSourceActor = nullptr;
 	bUsesCursorEnd = false;
 	return true;
+}
+
+bool AAuraGameplayCueNotifyActor::Recycle()
+{
+	bCueActive = false;
+	SetActorTickEnabled(false);
+	if (BeamNiagaraComponent)
+	{
+		BeamNiagaraComponent->DeactivateImmediate();
+		BeamNiagaraComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+	}
+	if (LoopingSoundComponent)
+	{
+		LoopingSoundComponent->Stop();
+	}
+	BeamTargetActor = nullptr;
+	BeamStartActor = nullptr;
+	BeamSourceActor = nullptr;
+	bUsesCursorEnd = false;
+	return Super::Recycle();
+}
+
+void AAuraGameplayCueNotifyActor::ReuseAfterRecycle()
+{
+	Super::ReuseAfterRecycle();
+	bCueActive = false;
+	SetActorTickEnabled(true);
 }

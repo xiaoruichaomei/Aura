@@ -12,6 +12,8 @@ bool UAuraEnemyPoolSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 
 void UAuraEnemyPoolSubsystem::Deinitialize()
 {
+	bIsShuttingDown = true;
+	bPoolReady = false;
 	for (TPair<UClass*, FPoolBucket>& Pair : Buckets)
 	{
 		for (AAuraEnemy* Enemy : Pair.Value.All)
@@ -23,7 +25,6 @@ void UAuraEnemyPoolSubsystem::Deinitialize()
 		}
 	}
 	Buckets.Empty();
-	bPoolReady = false;
 	Super::Deinitialize();
 }
 
@@ -68,7 +69,7 @@ void UAuraEnemyPoolSubsystem::PrewarmPools()
 
 AAuraEnemy* UAuraEnemyPoolSubsystem::AcquireEnemy(TSubclassOf<AAuraEnemy> EnemyClass, const FTransform& Transform)
 {
-	if (!EnemyClass)
+	if (bIsShuttingDown || !EnemyClass)
 	{
 		return nullptr;
 	}
@@ -111,7 +112,7 @@ AAuraEnemy* UAuraEnemyPoolSubsystem::AcquireEnemy(TSubclassOf<AAuraEnemy> EnemyC
 
 void UAuraEnemyPoolSubsystem::ReleaseEnemy(AAuraEnemy* Enemy)
 {
-	if (!IsValid(Enemy))
+	if (bIsShuttingDown || !IsValid(Enemy))
 	{
 		return;
 	}
@@ -130,7 +131,7 @@ void UAuraEnemyPoolSubsystem::ReleaseEnemy(AAuraEnemy* Enemy)
 
 void UAuraEnemyPoolSubsystem::NotifyEnemyDying(AAuraEnemy* Enemy)
 {
-	if (!IsValid(Enemy))
+	if (bIsShuttingDown || !IsValid(Enemy))
 	{
 		return;
 	}

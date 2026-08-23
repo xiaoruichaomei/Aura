@@ -91,6 +91,7 @@ private:
 	TSubclassOf<AAuraEnemy> PickEnemy(FRandomStream& Stream, int32& OutLevel) const;
 	bool FindSpawnLocation(FRandomStream& Stream, TSubclassOf<AAuraEnemy> EnemyClass, FVector& OutLocation) const;
 	bool ResolveSpawnLocationAtXY(const FVector& SampleLocation, TSubclassOf<AAuraEnemy> EnemyClass, FVector& OutLocation) const;
+	bool IsSavedSpawnLocationValid(const FTransform& SavedTransform, TSubclassOf<AAuraEnemy> EnemyClass) const;
 	void OnEnemyDying(AAuraEnemy* Enemy);
 
 	TArray<TObjectPtr<AAuraEnemy>> ActiveEnemies;

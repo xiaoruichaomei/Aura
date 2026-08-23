@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "Interface/CombatInterface.h"
+#include "Subsystem/AuraProjectilePoolSubsystem.h"
 
 FString UAuraProjectileSpell::GetResolvedDescription(int32 Level, const FAuraAbilityInfo& AbilityInfo)
 {
@@ -51,6 +52,12 @@ void UAuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLocati
 	// 扇形散射：弹体数量按等级缩放（1级1颗…上限ProjectileSpread颗），
 	// 每颗围绕目标方向偏转 GetSpread(i) 的 Yaw
 	const int32 NumToSpawn = FMath::Min(GetAbilityLevel(), ProjectileSpread);
+	UAuraProjectilePoolSubsystem* ProjectilePool = GetWorld()->GetSubsystem<UAuraProjectilePoolSubsystem>();
+	if (!ProjectilePool)
+	{
+		return;
+	}
+	ProjectilePool->PrewarmProjectiles(ProjectileClass, ProjectilePoolPrewarmCount);
 	for (int32 i = 0; i < NumToSpawn; ++i)
 	{
 		FRotator Rotation = BaseRotation;
@@ -60,13 +67,12 @@ void UAuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLocati
 		SpawnTransform.SetLocation(SocketLocation);
 		SpawnTransform.SetRotation(Rotation.Quaternion());
 
-		AAuraProjectile* Projectile = GetWorld()->SpawnActorDeferred<AAuraProjectile>(
-			ProjectileClass,
-			SpawnTransform,
-			GetOwningActorFromActorInfo(),
-			Cast<APawn>(GetOwningActorFromActorInfo()),
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn
-			);
+		AAuraProjectile* Projectile = ProjectilePool->AcquireProjectile(
+			ProjectileClass, SpawnTransform, GetOwningActorFromActorInfo(), Cast<APawn>(GetOwningActorFromActorInfo()));
+		if (!Projectile)
+		{
+			continue;
+		}
 
 		FAuraDamageEffectParams Params = DamageEffectParams;
 		const FVector Direction = (ProjectileTargetLocation - SocketLocation).GetSafeNormal2D();
@@ -77,6 +83,5 @@ void UAuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLocati
 
 		Projectile->DamageEffectSpecHandle = SpecHandle;
 
-		Projectile->FinishSpawning(SpawnTransform);
 	}
 }

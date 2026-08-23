@@ -48,6 +48,7 @@ void AAuraGameModeBase::SaveSlotData(UMVVM_LoadSlot* LoadSlot, int32 SlotIndex)
 	LoadScreenSaveGame->SlotIndex = SlotIndex;
 	LoadScreenSaveGame->SaveSlotStatus = Taken;
 	LoadScreenSaveGame->MapName = AuraSaveConstants::DungeonMapName;
+	LoadScreenSaveGame->PlayerLevel = 1;
 	
 	UGameplayStatics::SaveGameToSlot(LoadScreenSaveGame, LoadSlot->GetLoadSlotName(), SlotIndex);
 }
@@ -222,6 +223,10 @@ bool AAuraGameModeBase::SaveCurrentWorld()
 		MapData = *ExistingMapData;
 	}
 	MapData.MapAssetName = CurrentMapKey;
+	if (MapData.PlayerData.bValid)
+	{
+		SaveGame->PlayerLevel = MapData.PlayerData.Level;
+	}
 	const FName SavedMapName = MapData.MapAssetName;
 	bool bSavedPlayer = false;
 	FVector SavedPlayerLocation = FVector::ZeroVector;

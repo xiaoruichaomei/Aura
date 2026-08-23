@@ -23,6 +23,8 @@ public:
 
 	virtual bool WhileActive_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) override;
 	virtual bool OnRemove_Implementation(AActor* MyTarget, const FGameplayCueParameters& Parameters) override;
+	virtual bool Recycle() override;
+	virtual void ReuseAfterRecycle() override;
 
 	/** 每帧刷新光束终点/起点，让电束跟随移动的目标（否则终点固定在施法瞬间，怪物走开会从身上穿过） */
 	virtual void Tick(float DeltaSeconds) override;

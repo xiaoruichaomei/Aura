@@ -250,7 +250,9 @@ void AAuraPlayerController::MulticastSpawnClickEffect_Implementation(const FVect
 	if (ClickNiagaraSystem)
 	{
 		// bAutoDestroy 默认为 true：特效播完自动销毁
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ClickNiagaraSystem, CursorLocation);
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			this, ClickNiagaraSystem, CursorLocation, FRotator::ZeroRotator, FVector::OneVector,
+			true, true, ENCPoolMethod::AutoRelease);
 	}
 }
 

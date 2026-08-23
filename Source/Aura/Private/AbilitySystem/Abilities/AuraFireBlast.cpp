@@ -9,6 +9,7 @@
 #include "GameplayEffect.h"
 #include "GameFramework/Pawn.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Subsystem/AuraProjectilePoolSubsystem.h"
 
 UAuraFireBlast::UAuraFireBlast()
 {
@@ -83,17 +84,30 @@ void UAuraFireBlast::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 void UAuraFireBlast::SpawnFireBalls()
 {
 	AActor* AvatarActor = GetAvatarActorFromActorInfo();
-	if (!AvatarActor || !AvatarActor->HasAuthority())
+	if (!AvatarActor)
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+	if (!AvatarActor->HasAuthority())
 	{
 		return;
 	}
 	TSubclassOf<AAuraFireBall> SpawnClass = FireBallClass.LoadSynchronous();
 	if (!SpawnClass)
 	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
 	}
 
 	const int32 FireBallCount = FMath::Clamp(NumFireBalls, 1, 24);
+	UAuraProjectilePoolSubsystem* ProjectilePool = GetWorld()->GetSubsystem<UAuraProjectilePoolSubsystem>();
+	if (!ProjectilePool)
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+	ProjectilePool->PrewarmFireBalls(SpawnClass, FMath::Max(FireBallPoolPrewarmCount, FireBallCount));
 	SpawnedFireBallCount = 0;
 	ReturnedFireBallCount = 0;
 	bExplosionTriggered = false;
@@ -105,19 +119,14 @@ void UAuraFireBlast::SpawnFireBalls()
 		const FVector Direction(FMath::Cos(AngleRadians), FMath::Sin(AngleRadians), 0.f);
 		FTransform SpawnTransform(Direction.Rotation(), Center + Direction * SpawnRadius);
 
-		AAuraFireBall* FireBall = GetWorld()->SpawnActorDeferred<AAuraFireBall>(
-			SpawnClass,
-			SpawnTransform,
-			GetOwningActorFromActorInfo(),
-			Cast<APawn>(GetOwningActorFromActorInfo()),
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		AAuraFireBall* FireBall = ProjectilePool->AcquireFireBall(
+			SpawnClass, SpawnTransform, GetOwningActorFromActorInfo(), Cast<APawn>(GetOwningActorFromActorInfo()));
 		if (FireBall)
 		{
 			FireBall->SetSourceActor(AvatarActor);
 			FireBall->SetDamageEffectSpecHandle(MakeDamageEffectSpec(DamageEffectParams));
 			FireBall->ConfigureFlight(Direction, MaxTravelDistance, OutgoingDuration, ReturnDuration);
 			FireBall->OnFireBallFinished.AddDynamic(this, &ThisClass::OnFireBallFinished);
-			FireBall->FinishSpawning(SpawnTransform);
 			++SpawnedFireBallCount;
 			ActiveFireBalls.Add(FireBall);
 		}
@@ -178,7 +187,8 @@ void UAuraFireBlast::ExplodeAtOwner()
 		UAuraAbilitySystemLibrary::GetLivePlayersWithinRadius(this, Targets, IgnoreActors, ExplosionRadius, AvatarActor->GetActorLocation());
 		for (AActor* Target : Targets)
 		{
-			if (!IsValid(Target) || !UAuraAbilitySystemLibrary::IsNotFriend(AvatarActor, Target))
+			if (!IsValid(Target) || Target == AvatarActor || Target == GetAvatarActorFromActorInfo() ||
+				!UAuraAbilitySystemLibrary::IsNotFriend(AvatarActor, Target))
 			{
 				continue;
 			}
@@ -204,7 +214,7 @@ void UAuraFireBlast::ExplodeAtOwner()
 	{
 		if (FireBall.IsValid())
 		{
-			FireBall->Destroy();
+			FireBall->ReturnToPool();
 		}
 	}
 	ActiveFireBalls.Reset();
@@ -217,6 +227,17 @@ void UAuraFireBlast::EndAbility(const FGameplayAbilitySpecHandle Handle, const F
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(ReturnTimeoutHandle);
+	}
+	if (!bExplosionTriggered)
+	{
+		for (const TWeakObjectPtr<AAuraFireBall>& FireBall : ActiveFireBalls)
+		{
+			if (FireBall.IsValid())
+			{
+				FireBall->ReturnToPool();
+			}
+		}
+		ActiveFireBalls.Reset();
 	}
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }

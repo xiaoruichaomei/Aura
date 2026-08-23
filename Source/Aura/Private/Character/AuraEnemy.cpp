@@ -43,6 +43,7 @@ AAuraEnemy::AAuraEnemy()
 void AAuraEnemy::BeginPlay()
 {
 	Super::BeginPlay();
+	CapturePoolDefaults();
 	
 	GetMesh()->SetCustomDepthStencilValue(CUSTOM_DEPTH_RED);
 	Weapon->SetCustomDepthStencilValue(CUSTOM_DEPTH_RED);
@@ -179,9 +180,14 @@ void AAuraEnemy::Die()
 			if (UAuraEnemyPoolSubsystem* Pool = World->GetSubsystem<UAuraEnemyPoolSubsystem>())
 			{
 				Pool->NotifyEnemyDying(this);
-				World->GetTimerManager().SetTimer(PoolReturnTimer, [Pool, this]()
+				const TWeakObjectPtr<UAuraEnemyPoolSubsystem> WeakPool(Pool);
+				const TWeakObjectPtr<AAuraEnemy> WeakEnemy(this);
+				World->GetTimerManager().SetTimer(PoolReturnTimer, [WeakPool, WeakEnemy]()
 				{
-					Pool->ReleaseEnemy(this);
+					if (WeakPool.IsValid() && WeakEnemy.IsValid())
+					{
+						WeakPool->ReleaseEnemy(WeakEnemy.Get());
+					}
 				}, LifeSpan, false);
 			}
 		}
@@ -216,6 +222,9 @@ void AAuraEnemy::ActivateFromPool(const FTransform& InTransform, int32 InLevel)
 	GetCharacterMovement()->StopMovementImmediately();
 	Level = FMath::Max(1, InLevel);
 	AbilitySystemComponent->CancelAllAbilities();
+	FGameplayTagContainer DebuffTags;
+	DebuffTags.AddTag(FAuraGameplayTags::Get().Effects_Debuff);
+	AbilitySystemComponent->RemoveActiveEffectsWithTags(DebuffTags);
 	if (UAuraAttributeSet* AuraAS = Cast<UAuraAttributeSet>(AttributeSet))
 	{
 		AbilitySystemComponent->SetNumericAttributeBase(UAuraAttributeSet::GetHealthAttribute(), AuraAS->GetMaxHealth());
@@ -256,6 +265,84 @@ void AAuraEnemy::ActivateFromPool(const FTransform& InTransform, int32 InLevel)
 		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("Stunned"), false);
 		AuraAIController->GetBlackboardComponent()->ClearValue(FName("TargetToFollow"));
 	}
+}
+
+void AAuraEnemy::CapturePoolDefaults()
+{
+	if (bPoolDefaultsCaptured)
+	{
+		return;
+	}
+
+	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
+	{
+		InitialMeshRelativeTransform = CharacterMesh->GetRelativeTransform();
+		InitialAnimClass = CharacterMesh->GetAnimClass();
+		for (int32 MaterialIndex = 0; MaterialIndex < CharacterMesh->GetNumMaterials(); ++MaterialIndex)
+		{
+			InitialMeshMaterials.Add(CharacterMesh->GetMaterial(MaterialIndex));
+		}
+	}
+	if (Weapon)
+	{
+		InitialWeaponRelativeTransform = Weapon->GetRelativeTransform();
+		InitialWeaponAttachSocket = Weapon->GetAttachSocketName();
+		for (int32 MaterialIndex = 0; MaterialIndex < Weapon->GetNumMaterials(); ++MaterialIndex)
+		{
+			InitialWeaponMaterials.Add(Weapon->GetMaterial(MaterialIndex));
+		}
+	}
+	bPoolDefaultsCaptured = true;
+}
+
+void AAuraEnemy::ResetNativePoolState()
+{
+	CapturePoolDefaults();
+	StopAnimMontage();
+
+	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
+	{
+		CharacterMesh->SetAllBodiesSimulatePhysics(false);
+		CharacterMesh->SetSimulatePhysics(false);
+		CharacterMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		CharacterMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+		CharacterMesh->SetEnableGravity(false);
+		CharacterMesh->SetRelativeTransform(InitialMeshRelativeTransform);
+		for (int32 MaterialIndex = 0; MaterialIndex < InitialMeshMaterials.Num(); ++MaterialIndex)
+		{
+			CharacterMesh->SetMaterial(MaterialIndex, InitialMeshMaterials[MaterialIndex]);
+		}
+		if (InitialAnimClass)
+		{
+			CharacterMesh->SetAnimInstanceClass(InitialAnimClass);
+		}
+		CharacterMesh->InitAnim(true);
+		CharacterMesh->SetVisibility(true, true);
+	}
+
+	if (Weapon)
+	{
+		Weapon->SetAllBodiesSimulatePhysics(false);
+		Weapon->SetSimulatePhysics(false);
+		Weapon->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		Weapon->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+		Weapon->SetEnableGravity(false);
+		Weapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, InitialWeaponAttachSocket);
+		Weapon->SetRelativeTransform(InitialWeaponRelativeTransform);
+		Weapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		for (int32 MaterialIndex = 0; MaterialIndex < InitialWeaponMaterials.Num(); ++MaterialIndex)
+		{
+			Weapon->SetMaterial(MaterialIndex, InitialWeaponMaterials[MaterialIndex]);
+		}
+		Weapon->SetVisibility(true, true);
+	}
+
+	if (HealthBar)
+	{
+		HealthBar->SetVisibility(true);
+	}
+	GetCharacterMovement()->bUseControllerDesiredRotation = true;
+	GetCharacterMovement()->bOrientRotationToMovement = false;
 }
 
 void AAuraEnemy::DeactivateToPool()
@@ -332,6 +419,11 @@ void AAuraEnemy::SetPoolState(EEnemyPoolState NewState)
 void AAuraEnemy::OnRep_PoolState()
 {
 	const bool bActive = PoolState != EEnemyPoolState::Inactive;
+	if (PoolState == EEnemyPoolState::Active)
+	{
+		ResetPoolBlueprintState();
+		ResetNativePoolState();
+	}
 	SetActorHiddenInGame(!bActive);
 	SetActorEnableCollision(bActive);
 }

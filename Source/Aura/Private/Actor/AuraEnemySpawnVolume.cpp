@@ -282,9 +282,11 @@ bool AAuraEnemySpawnVolume::ResolveSpawnLocationAtXY(const FVector& SampleLocati
 	{
 		return false;
 	}
+	// Prefer the lowest valid surface. This prevents an upper floor or an
+	// elevated building roof with NavMesh from winning over the actual ground.
 	GroundHits.Sort([](const FHitResult& A, const FHitResult& B)
 	{
-		return A.Distance < B.Distance;
+		return A.ImpactPoint.Z < B.ImpactPoint.Z;
 	});
 
 	const float MinimumGroundNormalZ = FMath::Cos(FMath::DegreesToRadians(MaxGroundSlopeDegrees));
@@ -351,6 +353,55 @@ bool AAuraEnemySpawnVolume::ResolveSpawnLocationAtXY(const FVector& SampleLocati
 	}
 
 	return false;
+}
+
+bool AAuraEnemySpawnVolume::IsSavedSpawnLocationValid(const FTransform& SavedTransform,
+	TSubclassOf<AAuraEnemy> EnemyClass) const
+{
+	if (!SpawnBounds || !EnemyClass || !GetWorld())
+	{
+		return false;
+	}
+
+	UNavigationSystemV1* NavigationSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+	const AAuraEnemy* EnemyDefaults = EnemyClass->GetDefaultObject<AAuraEnemy>();
+	const UCapsuleComponent* Capsule = EnemyDefaults ? EnemyDefaults->GetCapsuleComponent() : nullptr;
+	if (!NavigationSystem || !Capsule)
+	{
+		return false;
+	}
+
+	const FVector UnscaledExtent = SpawnBounds->GetUnscaledBoxExtent();
+	const FVector LocalLocation = SpawnBounds->GetComponentTransform().InverseTransformPosition(SavedTransform.GetLocation());
+	if (FMath::Abs(LocalLocation.X) > UnscaledExtent.X
+		|| FMath::Abs(LocalLocation.Y) > UnscaledExtent.Y
+		|| FMath::Abs(LocalLocation.Z) > UnscaledExtent.Z + 250.f)
+	{
+		return false;
+	}
+
+	const float CapsuleRadius = Capsule->GetUnscaledCapsuleRadius();
+	const float CapsuleHalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+	const FVector ExpectedGroundLocation = SavedTransform.GetLocation()
+		- FVector::UpVector * (CapsuleHalfHeight + 2.f);
+	FNavLocation Projected;
+	if (!NavigationSystem->ProjectPointToNavigation(
+		ExpectedGroundLocation, Projected, FVector(FMath::Max(50.f, CapsuleRadius), FMath::Max(50.f, CapsuleRadius), 100.f)))
+	{
+		return false;
+	}
+	if (FVector::DistSquared2D(ExpectedGroundLocation, Projected.Location) > FMath::Square(75.f)
+		|| FMath::Abs(ExpectedGroundLocation.Z - Projected.Location.Z) > 100.f)
+	{
+		return false;
+	}
+
+	const float ClearanceRadius = CapsuleRadius + SpawnCollisionPadding;
+	const float ClearanceHalfHeight = FMath::Max(CapsuleHalfHeight - 1.f, ClearanceRadius);
+	const FCollisionShape ClearanceShape = FCollisionShape::MakeCapsule(ClearanceRadius, ClearanceHalfHeight);
+	FCollisionQueryParams ClearanceParams(SCENE_QUERY_STAT(AuraEnemyRestoreClearance), false, this);
+	return !GetWorld()->OverlapBlockingTestByChannel(
+		SavedTransform.GetLocation(), SavedTransform.GetRotation(), ECC_Pawn, ClearanceShape, ClearanceParams);
 }
 
 void AAuraEnemySpawnVolume::OnEnemyDying(AAuraEnemy* Enemy)
@@ -422,7 +473,13 @@ int32 AAuraEnemySpawnVolume::RestoreEnemies(const TArray<FEnemySaveData>& SavedE
 		TSubclassOf<AAuraEnemy> EnemyClass = Data.EnemyClass.TryLoadClass<AAuraEnemy>();
 		FTransform RestoreTransform = Data.Transform;
 		FVector RestoredLocation;
-		if (!ResolveSpawnLocationAtXY(Data.Transform.GetLocation(), EnemyClass, RestoredLocation))
+		if (IsSavedSpawnLocationValid(Data.Transform, EnemyClass))
+		{
+			// Preserve the saved position and rotation whenever the original
+			// location is still navigable and has enough clearance.
+			RestoredLocation = Data.Transform.GetLocation();
+		}
+		else if (!ResolveSpawnLocationAtXY(Data.Transform.GetLocation(), EnemyClass, RestoredLocation))
 		{
 			FRandomStream RestoreStream(HashCombine(GetTypeHash(RandomSeed), GetTypeHash(Data.SpawnInstanceId)));
 			if (!FindSpawnLocation(RestoreStream, EnemyClass, RestoredLocation))

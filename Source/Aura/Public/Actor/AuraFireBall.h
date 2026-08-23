@@ -9,6 +9,7 @@ class UNiagaraComponent;
 class UNiagaraSystem;
 class USphereComponent;
 class AAuraFireBall;
+class APawn;
 
 UENUM(BlueprintType)
 enum class EFireBallState : uint8
@@ -35,6 +36,10 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void Destroyed() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	void SetPoolManaged(bool bManaged) { bPoolManaged = bManaged; }
+	void ActivateFromPool(const FTransform& Transform, AActor* NewOwner, APawn* NewInstigator);
+	void DeactivateToPool();
+	void ReturnToPool();
 
 	UFUNCTION(BlueprintCallable)
 	void SetSourceActor(AActor* NewSourceActor);
@@ -85,6 +90,12 @@ protected:
 	UPROPERTY(ReplicatedUsing=OnRep_State)
 	EFireBallState State = EFireBallState::Outgoing;
 
+	UFUNCTION()
+	void OnRep_PoolActive();
+
+	UPROPERTY(ReplicatedUsing=OnRep_PoolActive)
+	bool bPoolActive = false;
+
 	FVector OutgoingStartLocation;
 	FVector OutgoingTargetLocation;
 	float OutgoingElapsed = 0.f;
@@ -97,6 +108,10 @@ protected:
 	TSet<TWeakObjectPtr<AActor>> ReturningHitActors;
 	TSet<TWeakObjectPtr<AActor>> LocalVisualHitActors;
 	bool bFinishReported = false;
+	bool bPoolManaged = true;
+	FTimerHandle PoolLifeTimer;
+
+	void HandleLifeExpired();
 
 	void ReportFinished();
 	void InvokeLocalHitCue(AActor* OtherActor, const FHitResult& SweepResult);

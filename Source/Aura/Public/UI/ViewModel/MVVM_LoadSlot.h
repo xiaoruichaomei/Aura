@@ -23,10 +23,12 @@ public:
 	void SetPlayerName(FString InPlayerName);
 	void SetLoadSlotName(FString InLoadSlotName);
 	void SetMapName(FString InMapName);
+	void SetPlayerLevel(int32 InPlayerLevel);
 	
 	FString GetPlayerName() const { return PlayerName; }
 	FString GetLoadSlotName() const { return LoadSlotName; }
 	FString GetMapName() const { return MapName; }
+	FText GetPlayerLevel() const { return PlayerLevel; }
 	
 	void InitializeSlot();
 	
@@ -45,6 +47,9 @@ public:
 	// Field Notifies
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, FieldNotify, Setter, Getter)
 	FString PlayerName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, FieldNotify, Getter)
+	FText PlayerLevel;
 	
 private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, FieldNotify, Setter, Getter, meta = (AllowPrivateAccess = "true"))

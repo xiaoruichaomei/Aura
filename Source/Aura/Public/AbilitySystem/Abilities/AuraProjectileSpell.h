@@ -37,6 +37,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly)
 	int32 NumProjectiles = 5;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile|Pool", meta=(ClampMin="0"))
+	int32 ProjectilePoolPrewarmCount = 8;
+
 private:
 	/** 第 Index 颗弹体的 Yaw 偏移（以目标方向为 0，向两侧展开），按实际发射数 NumToSpawn 分布 */
 	float GetSpread(int32 Index, int32 NumToSpawn) const;

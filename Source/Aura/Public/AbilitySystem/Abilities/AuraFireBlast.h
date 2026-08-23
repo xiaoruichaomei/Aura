@@ -37,6 +37,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="FireBlast", meta=(ClampMin="1", ClampMax="24"))
 	int32 NumFireBalls = 12;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="FireBlast|Pool", meta=(ClampMin="0"))
+	int32 FireBallPoolPrewarmCount = 12;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="FireBlast", meta=(ClampMin="0"))
 	float SpawnRadius = 80.f;
 

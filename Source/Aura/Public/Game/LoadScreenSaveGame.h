@@ -39,6 +39,9 @@ public:
 	
 	UPROPERTY()
 	FString MapName = FString("Default Map Name");
+
+	UPROPERTY(SaveGame, BlueprintReadWrite)
+	int32 PlayerLevel = 1;
 	
 	UPROPERTY()
 	TEnumAsByte<ESaveSlotStatus> SaveSlotStatus = Vacant;

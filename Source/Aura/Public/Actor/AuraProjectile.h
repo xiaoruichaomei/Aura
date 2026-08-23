@@ -10,6 +10,7 @@
 class UNiagaraSystem;
 class USphereComponent;
 class UProjectileMovementComponent;
+class APawn;
 
 UCLASS()
 class AURA_API AAuraProjectile : public AActor
@@ -19,6 +20,11 @@ class AURA_API AAuraProjectile : public AActor
 public:	
 	AAuraProjectile();
 	virtual void Destroyed() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	void SetPoolManaged(bool bManaged) { bPoolManaged = bManaged; }
+	void ActivateFromPool(const FTransform& Transform, AActor* NewOwner, APawn* NewInstigator);
+	void DeactivateToPool();
 	
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
@@ -33,7 +39,22 @@ protected:
 	void OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 	
 private:
+	UFUNCTION()
+	void OnRep_PoolActive();
+
+	void HandleLifeExpired();
+	void ReturnToPool();
+	void PlayImpactEffects();
+	void StartFlightAudio();
+
 	bool bHit = false;
+	bool bPoolManaged = true;
+	bool bHasBeenActivated = false;
+
+	UPROPERTY(ReplicatedUsing=OnRep_PoolActive)
+	bool bPoolActive = false;
+
+	FTimerHandle PoolLifeTimer;
 	
 	UPROPERTY(EditAnywhere)
 	float LifeSpan = 15.f;
