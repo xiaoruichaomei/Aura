@@ -107,6 +107,14 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 		float LocalIncomingDamage = GetIncomingDamage();
 		SetIncomingDamage(0.f);
 
+		// Damage effects are intended for combat targets only. This final guard
+		// prevents pooled projectiles or Blueprint overlap handlers from applying
+		// accidental self-damage when source/owner replication is mid-update.
+		if (Props.SourceAvatarActor && Props.SourceAvatarActor == Props.TargetAvatarActor)
+		{
+			return;
+		}
+
 		// 目标已死亡：忽略后续伤害（例如死亡后仍在 tick 的燃烧），
 		// 防止重复触发 Die() 和 SendXPEvent。
 		if (Props.TargetAvatarActor && Props.TargetAvatarActor->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(Props.TargetAvatarActor))
@@ -217,11 +225,12 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 							{
 								PathFollowing->PauseMove(FAIRequestID::CurrentRequest, EPathFollowingVelocityMode::Keep);
 								FTimerHandle KnockbackTimer;
-								Props.TargetCharacter->GetWorldTimerManager().SetTimer(KnockbackTimer, [TargetAIController]()
+								const TWeakObjectPtr<AAIController> WeakTargetAIController(TargetAIController);
+								Props.TargetCharacter->GetWorldTimerManager().SetTimer(KnockbackTimer, [WeakTargetAIController]()
 								{
-									if (IsValid(TargetAIController))
+									if (AAIController* ValidController = WeakTargetAIController.Get())
 									{
-										if (UPathFollowingComponent* PathFollowing = TargetAIController->GetPathFollowingComponent())
+										if (UPathFollowingComponent* PathFollowing = ValidController->GetPathFollowingComponent())
 										{
 											PathFollowing->ResumeMove(FAIRequestID::CurrentRequest);
 										}

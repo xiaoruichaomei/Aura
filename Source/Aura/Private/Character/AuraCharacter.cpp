@@ -96,6 +96,11 @@ void AAuraCharacter::OnRep_PlayerState()
 	InitAbilityActorInfo();
 }
 
+void AAuraCharacter::RefreshAttributesAfterLoading()
+{
+	RefreshDefaultSecondaryAttributes();
+}
+
 int32 AAuraCharacter::GetLevel_Implementation()
 {
 	return GetAuraPlayerState()->GetPlayerLevel();
@@ -195,7 +200,14 @@ void AAuraCharacter::InitAbilityActorInfo()
 		}
 	}
 	
-	InitializeDefaultAttributes();
+	// Player attributes are authoritative and replicated from PlayerState.
+	// Applying the default GameplayEffects again in OnRep_PlayerState creates
+	// client-only Health/Mana bases; the first predicted/replicated ability
+	// effect then recomputes them and makes the UI jump to those default values.
+	if (HasAuthority())
+	{
+		InitializeDefaultAttributes();
+	}
 }
 
 AAuraPlayerState* AAuraCharacter::GetAuraPlayerState() const

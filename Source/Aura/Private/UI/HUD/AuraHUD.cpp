@@ -53,7 +53,16 @@ void AAuraHUD::InitOverlay(APlayerController* PC, APlayerState* PS, UAbilitySyst
 	UOverlayWidgetController* WidgetController = GetOverlayWidgetController(WidgetControllerParams);
 	
 	OverlayWidget->SetWidgetController(WidgetController);
-	WidgetController->BroadcastInitialValues();
+	// Let GameMode restore the saved PlayerState and vitals before the first
+	// UI broadcast. The controller also skips this broadcast while restoring.
+	const TWeakObjectPtr<UOverlayWidgetController> WeakWidgetController(WidgetController);
+	GetWorld()->GetTimerManager().SetTimerForNextTick([WeakWidgetController]()
+	{
+		if (UOverlayWidgetController* Controller = WeakWidgetController.Get())
+		{
+			Controller->BroadcastInitialValues();
+		}
+	});
 	
 	Widget->AddToViewport();
 }

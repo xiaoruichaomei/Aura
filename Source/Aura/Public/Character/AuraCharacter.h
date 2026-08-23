@@ -25,6 +25,7 @@ public:
 	AAuraCharacter();
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
+	void RefreshAttributesAfterLoading();
 	
 	// <Combat Interface>
 	virtual int32 GetLevel_Implementation() override;

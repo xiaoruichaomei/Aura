@@ -188,6 +188,21 @@ void ABaseCharacter::InitializeDefaultAttributes() const
 	ApplyEffectToSelf(DefaultVitalAttributes, 1.f);
 }
 
+void ABaseCharacter::RefreshDefaultSecondaryAttributes() const
+{
+	if (!HasAuthority() || !AbilitySystemComponent || !DefaultSecondaryAttributes)
+	{
+		return;
+	}
+
+	// MaxHealth and MaxMana MMCs read the character level when this infinite
+	// effect is applied. Loading changes PlayerState::Level afterwards, so the
+	// original level-1 effect must be replaced before restoring current vitals.
+	AbilitySystemComponent->RemoveActiveGameplayEffectBySourceEffect(
+		DefaultSecondaryAttributes, AbilitySystemComponent);
+	ApplyEffectToSelf(DefaultSecondaryAttributes, 1.f);
+}
+
 void ABaseCharacter::AddCharacterAbilities()
 {
 	if (!HasAuthority())

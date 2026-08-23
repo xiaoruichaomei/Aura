@@ -79,6 +79,9 @@ protected:
 	void OnXPChanged(int32 NewXP);
 	
 	void OnAbilityEquipped(const FGameplayTag& AbilityTag, const FGameplayTag& Status, const FGameplayTag& Slot, const FGameplayTag& PreviousSlot) const;
+
+	// Ignore attribute changes until the first authoritative values are broadcast.
+	bool bInitialValuesBroadcast = false;
 };
 
 template <typename T>

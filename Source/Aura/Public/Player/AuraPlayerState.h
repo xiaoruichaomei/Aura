@@ -19,6 +19,7 @@ struct FSelectedAbility
 };
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnPlayerStatChanged, int32);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSaveRestoreStateChanged, bool);
 
 /**
  * 
@@ -47,11 +48,14 @@ public:
 	void SetLevel(int32 InLevel);
 	void SetAttributePoints(int32 InPoints);
 	void SetSpellPoints(int32 InPoints);
+	void SetSaveRestoreInProgress(bool bInProgress);
+	bool IsSaveRestoreInProgress() const { return bSaveRestoreInProgress; }
 	
 	FOnPlayerStatChanged OnXPChangedDelegate;
 	FOnPlayerStatChanged OnLevelChangedDelegate;
 	FOnPlayerStatChanged OnAttributePointsChangedDelegate;
 	FOnPlayerStatChanged OnSpellPointsChangedDelegate;
+	FOnSaveRestoreStateChanged OnSaveRestoreStateChangedDelegate;
 	
 	UPROPERTY(EditDefaultsOnly)
 	TObjectPtr<ULevelUpInfo> LevelUpInfo;
@@ -75,6 +79,9 @@ private:
 	
 	UFUNCTION()
 	void OnRep_SpellPoints(int32 OldSpellPoints);
+
+	UFUNCTION()
+	void OnRep_SaveRestoreInProgress();
 	
 	UPROPERTY(VisibleAnywhere, ReplicatedUsing=OnRep_Level)
 	int32 Level = 1;
@@ -87,4 +94,7 @@ private:
 	
 	UPROPERTY(VisibleAnywhere, ReplicatedUsing=OnRep_SpellPoints)
 	int32 SpellPoints = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_SaveRestoreInProgress)
+	bool bSaveRestoreInProgress = false;
 };

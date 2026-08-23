@@ -354,7 +354,23 @@ void AAuraGameModeBase::RestoreCurrentWorld()
 	if (!MapData)
 	{
 		UE_LOG(LogTemp, Log, TEXT("Aura: no saved world state found for map '%s'."), *CurrentMapName);
+		if (AAuraCharacter* Player = Cast<AAuraCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
+		{
+			if (AAuraPlayerState* PlayerState = Player->GetPlayerState<AAuraPlayerState>())
+			{
+				PlayerState->SetSaveRestoreInProgress(false);
+			}
+		}
 		return;
+	}
+
+	AAuraCharacter* ExistingPlayer = Cast<AAuraCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0));
+	if (ExistingPlayer)
+	{
+		if (AAuraPlayerState* PlayerState = ExistingPlayer->GetPlayerState<AAuraPlayerState>())
+		{
+			PlayerState->SetSaveRestoreInProgress(true);
+		}
 	}
 	UE_LOG(LogTemp, Log, TEXT("Aura: restoring world state for map '%s'."), *CurrentMapName);
 	if (!bWorldEnemiesRestored)
@@ -408,6 +424,7 @@ void AAuraGameModeBase::RestoreCurrentWorld()
 			if (PlayerState)
 			{
 				PlayerState->SetLevel(MapData->PlayerData.Level);
+				Player->RefreshAttributesAfterLoading();
 				PlayerState->SetXP(MapData->PlayerData.XP);
 				PlayerState->SetAttributePoints(MapData->PlayerData.AttributePoints);
 				PlayerState->SetSpellPoints(MapData->PlayerData.SpellPoints);
@@ -431,6 +448,7 @@ void AAuraGameModeBase::RestoreCurrentWorld()
 					MapData->PlayerData.Health,
 					MapData->PlayerData.Mana,
 					MapData->PlayerData.Abilities.Num());
+				PlayerState->SetSaveRestoreInProgress(false);
 			}
 		}
 	}

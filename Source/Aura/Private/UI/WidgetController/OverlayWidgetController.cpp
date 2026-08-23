@@ -13,6 +13,11 @@
 
 void UOverlayWidgetController::BroadcastInitialValues()
 {
+	if (GetAuraPS()->IsSaveRestoreInProgress())
+	{
+		return;
+	}
+	bInitialValuesBroadcast = true;
 	OnHealthChanged.Broadcast(GetAuraAS()->GetHealth());
 	OnMaxHealthChanged.Broadcast(GetAuraAS()->GetMaxHealth());
 	OnManaChanged.Broadcast(GetAuraAS()->GetMana());
@@ -21,23 +26,44 @@ void UOverlayWidgetController::BroadcastInitialValues()
 
 void UOverlayWidgetController::BindCallbacksToDependencies()
 {
+	GetAuraPS()->OnSaveRestoreStateChangedDelegate.AddLambda([this](bool bInProgress)
+	{
+		if (!bInProgress)
+		{
+			// The saved vitals are now authoritative. Broadcast them as the
+			// initial state so delayed UI bars do not animate from full value.
+			BroadcastInitialValues();
+		}
+	});
+
 	GetAuraPS()->OnXPChangedDelegate.AddUObject(this, &UOverlayWidgetController::OnXPChanged);
 	GetAuraPS()->OnLevelChangedDelegate.AddLambda([this](int32 NewLevel)
 	{
-		OnPlayerLevelChangedDelegate.Broadcast(NewLevel);
+		if (!GetAuraPS()->IsSaveRestoreInProgress())
+		{
+			OnPlayerLevelChangedDelegate.Broadcast(NewLevel);
+		}
 		
 	});
 	
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(GetAuraAS()->GetHealthAttribute()).AddLambda(
 		[this](const FOnAttributeChangeData& Data)
 		{
-			OnHealthChanged.Broadcast(Data.NewValue);		
+			if (!bInitialValuesBroadcast)
+			{
+				return;
+			}
+			OnHealthChanged.Broadcast(Data.NewValue);
 		}	
 	);
 	
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(GetAuraAS()->GetMaxHealthAttribute()).AddLambda(
 		[this](const FOnAttributeChangeData& Data)
 		{
+			if (!bInitialValuesBroadcast)
+			{
+				return;
+			}
 			OnMaxHealthChanged.Broadcast(Data.NewValue);
 		}
 	);
@@ -45,6 +71,10 @@ void UOverlayWidgetController::BindCallbacksToDependencies()
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(GetAuraAS()->GetManaAttribute()).AddLambda(
 		[this](const FOnAttributeChangeData& Data)
 		{
+			if (!bInitialValuesBroadcast)
+			{
+				return;
+			}
 			OnManaChanged.Broadcast(Data.NewValue);
 		}
 	);
@@ -52,6 +82,10 @@ void UOverlayWidgetController::BindCallbacksToDependencies()
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(GetAuraAS()->GetMaxManaAttribute()).AddLambda(
 		[this](const FOnAttributeChangeData& Data)
 		{
+			if (!bInitialValuesBroadcast)
+			{
+				return;
+			}
 			OnMaxManaChanged.Broadcast(Data.NewValue);
 		}
 	);
@@ -72,6 +106,10 @@ void UOverlayWidgetController::BindCallbacksToDependencies()
 	{
 		for (const FGameplayTag& Tag : AssetTags)
 		{
+			if (GetAuraPS()->IsSaveRestoreInProgress() && Tag.MatchesTagExact(FGameplayTag::RequestGameplayTag(FName("Message.LevelUp"))))
+			{
+				continue;
+			}
 			FGameplayTag MessageTag = FGameplayTag::RequestGameplayTag(FName("Message"));
 			if (Tag.MatchesTag(MessageTag))
 			{

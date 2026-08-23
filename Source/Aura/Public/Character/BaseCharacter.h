@@ -57,6 +57,7 @@ public:
 protected:
 	virtual void InitAbilityActorInfo();
 	virtual void InitializeDefaultAttributes() const;
+	void RefreshDefaultSecondaryAttributes() const;
 	void AddCharacterAbilities();
 	void Dissolve();
 	
