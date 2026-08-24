@@ -17,6 +17,8 @@
 
 AAuraCharacter::AAuraCharacter()
 {
+	bReplicates = true;
+	SetReplicateMovement(true);
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>("CameraBoom");
 	CameraBoom->SetupAttachment(GetRootComponent());
 	CameraBoom->SetUsingAbsoluteRotation(true);
@@ -82,6 +84,9 @@ void AAuraCharacter::BeginPlay()
 void AAuraCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
+	UE_LOG(LogTemp, Log, TEXT("Aura: %s possessed by %s NetMode=%d Role=%d Authority=%d"),
+		*GetName(), *GetNameSafe(NewController), static_cast<int32>(GetNetMode()),
+		static_cast<int32>(GetLocalRole()), HasAuthority() ? 1 : 0);
 	
 	// Init ability actor info for the server
 	InitAbilityActorInfo();

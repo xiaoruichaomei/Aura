@@ -55,9 +55,14 @@ public:
 	UFUNCTION(Server, Unreliable)
 	void ServerSetMagicCircleLocation(FVector_NetQuantize InLocation);
 
+	/** Requests the listen server to save and move every connected player to MainMenu. */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category="Networking")
+	void ServerTravelToLoadMenu();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
+	virtual void OnRep_Pawn() override;
 
 private:
 	void Move(const FInputActionValue& InputActionValue);

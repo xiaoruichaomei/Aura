@@ -17,6 +17,11 @@
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
 #include "UObject/SoftObjectPath.h"
+#include "Engine/World.h"
+#include "Engine/NetDriver.h"
+#include "Engine/NetConnection.h"
+#include "GameFramework/PlayerController.h"
+#include "Player/AuraPlayerController.h"
 
 namespace AuraSaveConstants
 {
@@ -32,6 +37,140 @@ namespace AuraSaveConstants
 	bool IsMenuMap(const FString& MapName)
 	{
 		return MapName.Contains(TEXT("MainMenu")) || MapName.Contains(TEXT("LoadMenu"));
+	}
+
+	bool NormalizeSavedAbilities(ULoadScreenSaveGame* SaveGame)
+	{
+		if (!SaveGame)
+		{
+			return false;
+		}
+
+		bool bChanged = false;
+		for (TPair<FName, FMapSaveData>& SavedMap : SaveGame->SavedMaps)
+		{
+			FMapSaveData& MapData = SavedMap.Value;
+			if (MapData.Players.IsEmpty() && MapData.PlayerData.bValid)
+			{
+				MapData.Players.Add(MapData.PlayerData);
+				bChanged = true;
+			}
+
+			TArray<FPlayerSaveData*> PlayerRecords;
+			PlayerRecords.Add(&MapData.PlayerData);
+			for (FPlayerSaveData& PlayerData : MapData.Players)
+			{
+				PlayerRecords.Add(&PlayerData);
+			}
+			for (FPlayerSaveData* PlayerData : PlayerRecords)
+			{
+				TArray<FSavedAbilityData>& Abilities = PlayerData->Abilities;
+				TMap<FGameplayTag, FSavedAbilityData> UniqueAbilities;
+				for (const FSavedAbilityData& Ability : Abilities)
+				{
+					if (Ability.AbilityTag.IsValid())
+					{
+						UniqueAbilities.Add(Ability.AbilityTag, Ability);
+					}
+				}
+				if (UniqueAbilities.Num() != Abilities.Num())
+				{
+					Abilities.Reset(UniqueAbilities.Num());
+					for (const TPair<FGameplayTag, FSavedAbilityData>& Ability : UniqueAbilities)
+					{
+						Abilities.Add(Ability.Value);
+					}
+					bChanged = true;
+				}
+			}
+		}
+		if (SaveGame->SaveVersion < 3)
+		{
+			SaveGame->SaveVersion = 3;
+			bChanged = true;
+		}
+		return bChanged;
+	}
+
+	void GetOrderedPlayerControllers(UWorld* World, TArray<APlayerController*>& OutControllers)
+	{
+		OutControllers.Reset();
+		if (!World)
+		{
+			return;
+		}
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (APlayerController* Controller = It->Get())
+			{
+				OutControllers.Add(Controller);
+			}
+		}
+		OutControllers.Sort([](const APlayerController& A, const APlayerController& B)
+		{
+			if (A.IsLocalController() != B.IsLocalController())
+			{
+				return A.IsLocalController();
+			}
+			const APlayerState* AState = A.PlayerState;
+			const APlayerState* BState = B.PlayerState;
+			return (AState ? AState->GetPlayerId() : MAX_int32) <
+				(BState ? BState->GetPlayerId() : MAX_int32);
+		});
+	}
+
+	bool ExportPlayerData(AAuraCharacter* Player, FPlayerSaveData& PlayerData)
+	{
+		AAuraPlayerState* PlayerState = Player ? Player->GetPlayerState<AAuraPlayerState>() : nullptr;
+		if (!PlayerState)
+		{
+			return false;
+		}
+		PlayerData.bValid = true;
+		PlayerData.Transform = Player->GetActorTransform();
+		PlayerData.Level = PlayerState->GetPlayerLevel();
+		PlayerData.XP = PlayerState->GetXP();
+		PlayerData.AttributePoints = PlayerState->GetAttributePoints();
+		PlayerData.SpellPoints = PlayerState->GetSpellPoints();
+		if (UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(PlayerState->GetAbilitySystemComponent()))
+		{
+			AuraASC->ExportSavedAbilities(PlayerData.Abilities);
+		}
+		if (const UAuraAttributeSet* Attributes = Cast<UAuraAttributeSet>(PlayerState->GetAttributeSet()))
+		{
+			PlayerData.Health = Attributes->GetHealth();
+			PlayerData.Mana = Attributes->GetMana();
+		}
+		return true;
+	}
+
+	bool ImportPlayerData(AAuraCharacter* Player, const FPlayerSaveData& PlayerData)
+	{
+		AAuraPlayerState* PlayerState = Player ? Player->GetPlayerState<AAuraPlayerState>() : nullptr;
+		if (!PlayerState)
+		{
+			return false;
+		}
+		PlayerState->SetSaveRestoreInProgress(true);
+		Player->SetActorTransform(PlayerData.Transform);
+		PlayerState->SetLevel(PlayerData.Level);
+		Player->RefreshAttributesAfterLoading();
+		PlayerState->SetXP(PlayerData.XP);
+		PlayerState->SetAttributePoints(PlayerData.AttributePoints);
+		PlayerState->SetSpellPoints(PlayerData.SpellPoints);
+		if (UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(PlayerState->GetAbilitySystemComponent()))
+		{
+			AuraASC->RestoreSavedAbilities(PlayerData.Abilities);
+			if (UAuraAttributeSet* Attributes = Cast<UAuraAttributeSet>(PlayerState->GetAttributeSet()))
+			{
+				AuraASC->SetNumericAttributeBase(UAuraAttributeSet::GetHealthAttribute(),
+					FMath::Clamp(PlayerData.Health, 0.f, Attributes->GetMaxHealth()));
+				AuraASC->SetNumericAttributeBase(UAuraAttributeSet::GetManaAttribute(),
+					FMath::Clamp(PlayerData.Mana, 0.f, Attributes->GetMaxMana()));
+			}
+		}
+		PlayerState->SetSaveRestoreInProgress(false);
+		return true;
 	}
 }
 
@@ -55,6 +194,11 @@ void AAuraGameModeBase::SaveSlotData(UMVVM_LoadSlot* LoadSlot, int32 SlotIndex)
 
 ULoadScreenSaveGame* AAuraGameModeBase::GetSaveSlotData(const FString& SlotName, int32 SlotIndex)
 {
+	if (SlotName.IsEmpty() || SlotIndex < 0)
+	{
+		return nullptr;
+	}
+
 	USaveGame* SaveGameObject = nullptr;
 	if (UGameplayStatics::DoesSaveGameExist(SlotName, SlotIndex))
 	{
@@ -62,15 +206,30 @@ ULoadScreenSaveGame* AAuraGameModeBase::GetSaveSlotData(const FString& SlotName,
 	}
 	else
 	{
+		if (!LoadScreenSaveGameClass)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Aura: cannot create save slot '%s'; LoadScreenSaveGameClass is not configured."), *SlotName);
+			return nullptr;
+		}
 		SaveGameObject = UGameplayStatics::CreateSaveGameObject(LoadScreenSaveGameClass);
 	}
 	ULoadScreenSaveGame* LoadScreenSaveGame = Cast<ULoadScreenSaveGame>(SaveGameObject);
+	const bool bCompactedAbilities = AuraSaveConstants::NormalizeSavedAbilities(LoadScreenSaveGame);
+	bool bSaveMigratedData = bCompactedAbilities;
 	if (LoadScreenSaveGame && LoadScreenSaveGame->SaveSlotStatus == Taken &&
 		LoadScreenSaveGame->MapName != AuraSaveConstants::DungeonMapName)
 	{
 		LoadScreenSaveGame->MapName = AuraSaveConstants::DungeonMapName;
-		UGameplayStatics::SaveGameToSlot(LoadScreenSaveGame, SlotName, SlotIndex);
+		bSaveMigratedData = true;
 		UE_LOG(LogTemp, Log, TEXT("Aura: migrated slot '%s' map name to Dungeon."), *SlotName);
+	}
+	if (bSaveMigratedData)
+	{
+		UGameplayStatics::SaveGameToSlot(LoadScreenSaveGame, SlotName, SlotIndex);
+		if (bCompactedAbilities)
+		{
+			UE_LOG(LogTemp, Log, TEXT("Aura: compacted duplicate ability records in slot '%s'."), *SlotName);
+		}
 	}
 	return LoadScreenSaveGame;
 }
@@ -85,6 +244,14 @@ void AAuraGameModeBase::DeleteSlot(const FString& SlotName, int32 SlotIndex)
 
 void AAuraGameModeBase::TravelToMap(UMVVM_LoadSlot* Slot)
 {
+	// Only the server owns level travel in a networked game. Clients must
+	// remain connected and follow the server's travel.
+	if (GetNetMode() == NM_Client)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Aura: client cannot start map travel; waiting for server."));
+		return;
+	}
+
 	if (!IsValid(Slot))
 	{
 		UE_LOG(LogTemp, Error, TEXT("Aura: cannot travel because the selected load slot is invalid."));
@@ -135,14 +302,59 @@ void AAuraGameModeBase::TravelToMap(UMVVM_LoadSlot* Slot)
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("Aura: travelling to map '%s' for slot '%s'."),
-		*MapAsset->ToSoftObjectPath().ToString(), *SlotName);
-	UGameplayStatics::OpenLevelBySoftObjectPtr(this, *MapAsset);
+	const FString MapPath = MapAsset->ToSoftObjectPath().GetLongPackageName();
+	UE_LOG(LogTemp, Log, TEXT("Aura: travelling to map '%s' for slot '%s' (NetMode=%d)."),
+		*MapPath, *SlotName, static_cast<int32>(GetNetMode()));
+
+	if (GetNetMode() == NM_Standalone)
+	{
+		UGameplayStatics::OpenLevel(this, FName(*MapPath));
+	}
+	else
+	{
+		PendingMapTravelPath = MapPath;
+		ExecutePendingMapTravel();
+	}
+}
+
+void AAuraGameModeBase::ExecutePendingMapTravel()
+{
+	if (!HasAuthority() || !GetWorld() || PendingMapTravelPath.IsEmpty())
+	{
+		return;
+	}
+
+	bool bConnectionStillJoining = GetWorld()->GetTimeSeconds() < 1.f;
+	if (const UNetDriver* NetDriver = GetWorld()->GetNetDriver())
+	{
+		for (const UNetConnection* Connection : NetDriver->ClientConnections)
+		{
+			if (IsValid(Connection) && !IsValid(Connection->PlayerController))
+			{
+				bConnectionStillJoining = true;
+				break;
+			}
+		}
+	}
+	if (bConnectionStillJoining)
+	{
+		GetWorldTimerManager().SetTimer(PendingMapTravelTimer, this,
+			&AAuraGameModeBase::ExecutePendingMapTravel, 0.2f, false);
+		return;
+	}
+
+	const FString MapPath = MoveTemp(PendingMapTravelPath);
+	PendingMapTravelPath.Reset();
+	UE_LOG(LogTemp, Log, TEXT("Aura: network clients are ready; starting server travel to '%s'."), *MapPath);
+	// Relative travel preserves the current listen URL and PIE port.
+	GetWorld()->ServerTravel(MapPath, false);
 }
 
 void AAuraGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
+	UE_LOG(LogTemp, Log, TEXT("Aura: GameMode BeginPlay NetMode=%d Authority=%d World=%s"),
+		static_cast<int32>(GetNetMode()), HasAuthority() ? 1 : 0, *GetNameSafe(GetWorld()));
 	if (!DefaultMapName.IsEmpty() && !DefaultMap.IsNull())
 	{
 		Maps.Add(DefaultMapName, DefaultMap);
@@ -170,14 +382,26 @@ void AAuraGameModeBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// EndPlay is reached when travelling away from the current map and when
 	// the game is closed, so it is the final reliable save point for the map.
 	const FString CurrentMapName = AuraSaveConstants::GetCanonicalMapName(this);
-	if (HasAuthority() && !AuraSaveConstants::IsMenuMap(CurrentMapName))
+	if (HasAuthority() && !bSkipEndPlaySave && !AuraSaveConstants::IsMenuMap(CurrentMapName))
 	{
-		const bool bSaved = SaveCurrentWorld();
+		const bool bSaved = SaveCurrentWorldInternal();
 		UE_LOG(LogTemp, Log, TEXT("Aura: saved world on EndPlay (%s): %s"),
 			*UEnum::GetValueAsString(EndPlayReason), bSaved ? TEXT("Success") : TEXT("Failed"));
 	}
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void AAuraGameModeBase::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+	if (HasAuthority() && GetWorld())
+	{
+		// PostLogin can run just before the new pawn is fully ready. The restore
+		// routine retries briefly when either the pawn or PlayerState is missing.
+		GetWorldTimerManager().SetTimer(PlayerRestoreTimer, this,
+			&AAuraGameModeBase::RestoreCurrentWorld, 0.2f, false);
+	}
 }
 
 ULoadScreenSaveGame* AAuraGameModeBase::GetCurrentWorldSave() const
@@ -192,16 +416,31 @@ ULoadScreenSaveGame* AAuraGameModeBase::GetCurrentWorldSave() const
 
 void AAuraGameModeBase::AutoSaveCurrentWorld()
 {
-	SaveCurrentWorld();
+	SaveCurrentWorldInternal();
 }
 
 bool AAuraGameModeBase::SaveCurrentWorld()
 {
 	if (!HasAuthority())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Aura: cannot save world without authority."));
+		if (AAuraPlayerController* PlayerController = Cast<AAuraPlayerController>(UGameplayStatics::GetPlayerController(this, 0)))
+		{
+			PlayerController->ServerTravelToLoadMenu();
+		}
 		return false;
 	}
+
+	const bool bSaved = SaveCurrentWorldInternal();
+	if (bSaved && GetWorld() && !AuraSaveConstants::IsMenuMap(AuraSaveConstants::GetCanonicalMapName(this)))
+	{
+		bSkipEndPlaySave = true;
+		GetWorld()->ServerTravel(TEXT("/Game/Maps/MainMenu"), false);
+	}
+	return bSaved;
+}
+
+bool AAuraGameModeBase::SaveCurrentWorldInternal()
+{
 	const FString CurrentMapName = AuraSaveConstants::GetCanonicalMapName(this);
 	if (AuraSaveConstants::IsMenuMap(CurrentMapName))
 	{
@@ -223,36 +462,47 @@ bool AAuraGameModeBase::SaveCurrentWorld()
 		MapData = *ExistingMapData;
 	}
 	MapData.MapAssetName = CurrentMapKey;
-	if (MapData.PlayerData.bValid)
-	{
-		SaveGame->PlayerLevel = MapData.PlayerData.Level;
-	}
 	const FName SavedMapName = MapData.MapAssetName;
-	bool bSavedPlayer = false;
-	FVector SavedPlayerLocation = FVector::ZeroVector;
-	if (AAuraCharacter* Player = Cast<AAuraCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
+	int32 SavedPlayerCount = 0;
+	TArray<APlayerController*> PlayerControllers;
+	AuraSaveConstants::GetOrderedPlayerControllers(GetWorld(), PlayerControllers);
+	for (int32 OrderedIndex = 0; OrderedIndex < PlayerControllers.Num(); ++OrderedIndex)
 	{
-		if (AAuraPlayerState* PlayerState = Player->GetPlayerState<AAuraPlayerState>())
+		APlayerController* PlayerController = PlayerControllers[OrderedIndex];
+		const int32 PlayerIndex = PlayerSaveIndices.FindOrAdd(PlayerController, OrderedIndex);
+		if (!MapData.Players.IsValidIndex(PlayerIndex))
 		{
-			FPlayerSaveData& PlayerData = MapData.PlayerData;
-			PlayerData.bValid = true;
-			PlayerData.Transform = Player->GetActorTransform();
-			bSavedPlayer = true;
-			SavedPlayerLocation = PlayerData.Transform.GetLocation();
-			PlayerData.Level = PlayerState->GetPlayerLevel();
-			PlayerData.XP = PlayerState->GetXP();
-			PlayerData.AttributePoints = PlayerState->GetAttributePoints();
-			PlayerData.SpellPoints = PlayerState->GetSpellPoints();
-			if (UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(PlayerState->GetAbilitySystemComponent()))
-			{
-				AuraASC->ExportSavedAbilities(PlayerData.Abilities);
-			}
-			if (const UAuraAttributeSet* Attributes = Cast<UAuraAttributeSet>(PlayerState->GetAttributeSet()))
-			{
-				PlayerData.Health = Attributes->GetHealth();
-				PlayerData.Mana = Attributes->GetMana();
-			}
+			MapData.Players.SetNum(PlayerIndex + 1);
 		}
+		const bool bHasSavedPlayerData = MapData.Players.IsValidIndex(PlayerIndex)
+			&& MapData.Players[PlayerIndex].bValid;
+		const bool bHasLegacyHostData = PlayerIndex == 0 && MapData.PlayerData.bValid;
+		if (!RestoredPlayerIndices.Contains(PlayerIndex) && (bHasSavedPlayerData || bHasLegacyHostData))
+		{
+			// A newly joined pawn still contains defaults until its delayed restore completes.
+			// Preserve the existing record instead of overwriting it during an early exit/save.
+			if (!bHasSavedPlayerData && bHasLegacyHostData)
+			{
+				MapData.Players[PlayerIndex] = MapData.PlayerData;
+			}
+			UE_LOG(LogTemp, Warning,
+				TEXT("Aura: preserving player index=%d because save restore has not completed."),
+				PlayerIndex);
+			continue;
+		}
+
+		AAuraCharacter* Player = Cast<AAuraCharacter>(PlayerController->GetPawn());
+		if (AuraSaveConstants::ExportPlayerData(Player, MapData.Players[PlayerIndex]))
+		{
+			++SavedPlayerCount;
+			UE_LOG(LogTemp, Verbose, TEXT("Aura: saved controller %s to stable player index=%d."),
+				*GetNameSafe(PlayerController), PlayerIndex);
+		}
+	}
+	if (MapData.Players.IsValidIndex(0) && MapData.Players[0].bValid)
+	{
+		MapData.PlayerData = MapData.Players[0];
+		SaveGame->PlayerLevel = MapData.PlayerData.Level;
 	}
 
 	TArray<AAuraEnemySpawnVolume*> SpawnVolumes;
@@ -270,22 +520,36 @@ bool AAuraGameModeBase::SaveCurrentWorld()
 			SpawnVolume->ExportEnemies(MapData.Enemies);
 		}
 	}
-	SaveGame->SaveVersion = 1;
+	SaveGame->SaveVersion = 3;
 	SaveGame->MapName = CurrentMapName;
 	const int32 SavedSpawnerCount = MapData.Spawners.Num();
 	const int32 SavedEnemyCount = MapData.Enemies.Num();
 	SaveGame->SavedMaps.Add(MapData.MapAssetName, MoveTemp(MapData));
 	const bool bSaved = UGameplayStatics::SaveGameToSlot(SaveGame, AuraGameInstance->CurrentSlotName, AuraGameInstance->CurrentSlotIndex);
-	UE_LOG(LogTemp, Log, TEXT("Aura: SaveCurrentWorld slot=%s index=%d map=%s player=%s location=%s spawners=%d enemies=%d result=%s"),
+	UE_LOG(LogTemp, Log, TEXT("Aura: SaveCurrentWorld slot=%s index=%d map=%s players=%d spawners=%d enemies=%d result=%s"),
 		*AuraGameInstance->CurrentSlotName,
 		AuraGameInstance->CurrentSlotIndex,
 		*SavedMapName.ToString(),
-		bSavedPlayer ? TEXT("Yes") : TEXT("No"),
-		*SavedPlayerLocation.ToCompactString(),
+		SavedPlayerCount,
 		SavedSpawnerCount,
 		SavedEnemyCount,
 		bSaved ? TEXT("Success") : TEXT("Failed"));
 	return bSaved;
+}
+
+void AAuraGameModeBase::SaveAndReturnToMainMenu()
+{
+	if (!HasAuthority() || !GetWorld())
+	{
+		return;
+	}
+
+	SaveCurrentWorldInternal();
+	bSkipEndPlaySave = true;
+	UE_LOG(LogTemp, Log, TEXT("Aura: server returning all players to MainMenu."));
+	// Relative travel preserves the active listen address and PIE port so the
+	// connected client can follow and remain in the same session.
+	GetWorld()->ServerTravel(TEXT("/Game/Maps/MainMenu"), false);
 }
 
 void AAuraGameModeBase::EnsureDefaultEnemySpawner()
@@ -364,14 +628,6 @@ void AAuraGameModeBase::RestoreCurrentWorld()
 		return;
 	}
 
-	AAuraCharacter* ExistingPlayer = Cast<AAuraCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0));
-	if (ExistingPlayer)
-	{
-		if (AAuraPlayerState* PlayerState = ExistingPlayer->GetPlayerState<AAuraPlayerState>())
-		{
-			PlayerState->SetSaveRestoreInProgress(true);
-		}
-	}
 	UE_LOG(LogTemp, Log, TEXT("Aura: restoring world state for map '%s'."), *CurrentMapName);
 	if (!bWorldEnemiesRestored)
 	{
@@ -404,52 +660,47 @@ void AAuraGameModeBase::RestoreCurrentWorld()
 			SpawnVolumes.Num(), MapData->Spawners.Num(), RestoredEnemyCount, MapData->Enemies.Num());
 		bWorldEnemiesRestored = true;
 	}
-	if (MapData->PlayerData.bValid)
+	TArray<APlayerController*> PlayerControllers;
+	AuraSaveConstants::GetOrderedPlayerControllers(GetWorld(), PlayerControllers);
+	bool bNeedsRetry = false;
+	for (int32 OrderedIndex = 0; OrderedIndex < PlayerControllers.Num(); ++OrderedIndex)
 	{
-		AAuraCharacter* Player = Cast<AAuraCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0));
-		if (!Player)
+		APlayerController* PlayerController = PlayerControllers[OrderedIndex];
+		const int32 PlayerIndex = PlayerSaveIndices.FindOrAdd(PlayerController, OrderedIndex);
+		if (RestoredPlayerIndices.Contains(PlayerIndex))
 		{
-			GetWorldTimerManager().SetTimer(PlayerRestoreTimer, this, &AAuraGameModeBase::RestoreCurrentWorld, 0.2f, false);
-			return;
+			continue;
 		}
-		if (Player)
+
+		const FPlayerSaveData* PlayerData = MapData->Players.IsValidIndex(PlayerIndex)
+			? &MapData->Players[PlayerIndex]
+			: (PlayerIndex == 0 ? &MapData->PlayerData : nullptr);
+		if (!PlayerData || !PlayerData->bValid)
 		{
-			Player->SetActorTransform(MapData->PlayerData.Transform);
-			AAuraPlayerState* PlayerState = Player->GetPlayerState<AAuraPlayerState>();
-			if (!PlayerState)
-			{
-				GetWorldTimerManager().SetTimer(PlayerRestoreTimer, this, &AAuraGameModeBase::RestoreCurrentWorld, 0.2f, false);
-				return;
-			}
-			if (PlayerState)
-			{
-				PlayerState->SetLevel(MapData->PlayerData.Level);
-				Player->RefreshAttributesAfterLoading();
-				PlayerState->SetXP(MapData->PlayerData.XP);
-				PlayerState->SetAttributePoints(MapData->PlayerData.AttributePoints);
-				PlayerState->SetSpellPoints(MapData->PlayerData.SpellPoints);
-				UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(PlayerState->GetAbilitySystemComponent());
-				if (AuraASC)
-				{
-					AuraASC->RestoreSavedAbilities(MapData->PlayerData.Abilities);
-				}
-				if (AuraASC)
-				{
-					if (UAuraAttributeSet* Attributes = Cast<UAuraAttributeSet>(PlayerState->GetAttributeSet()))
-					{
-						AuraASC->SetNumericAttributeBase(UAuraAttributeSet::GetHealthAttribute(), FMath::Clamp(MapData->PlayerData.Health, 0.f, Attributes->GetMaxHealth()));
-						AuraASC->SetNumericAttributeBase(UAuraAttributeSet::GetManaAttribute(), FMath::Clamp(MapData->PlayerData.Mana, 0.f, Attributes->GetMaxMana()));
-					}
-				}
-				UE_LOG(LogTemp, Log, TEXT("Aura: restored player location=%s level=%d xp=%d health=%.1f mana=%.1f abilities=%d."),
-					*MapData->PlayerData.Transform.GetLocation().ToCompactString(),
-					MapData->PlayerData.Level,
-					MapData->PlayerData.XP,
-					MapData->PlayerData.Health,
-					MapData->PlayerData.Mana,
-					MapData->PlayerData.Abilities.Num());
-				PlayerState->SetSaveRestoreInProgress(false);
-			}
+			RestoredPlayerIndices.Add(PlayerIndex);
+			continue;
 		}
+
+		AAuraCharacter* Player = Cast<AAuraCharacter>(PlayerController->GetPawn());
+		if (!AuraSaveConstants::ImportPlayerData(Player, *PlayerData))
+		{
+			bNeedsRetry = true;
+			continue;
+		}
+
+		RestoredPlayerIndices.Add(PlayerIndex);
+		UE_LOG(LogTemp, Log, TEXT("Aura: restored player index=%d location=%s level=%d xp=%d health=%.1f mana=%.1f abilities=%d."),
+			PlayerIndex,
+			*PlayerData->Transform.GetLocation().ToCompactString(),
+			PlayerData->Level,
+			PlayerData->XP,
+			PlayerData->Health,
+			PlayerData->Mana,
+			PlayerData->Abilities.Num());
+	}
+	if (bNeedsRetry)
+	{
+		GetWorldTimerManager().SetTimer(PlayerRestoreTimer, this,
+			&AAuraGameModeBase::RestoreCurrentWorld, 0.2f, false);
 	}
 }

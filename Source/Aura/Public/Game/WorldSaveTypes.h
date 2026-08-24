@@ -111,6 +111,10 @@ struct FMapSaveData
 	UPROPERTY(SaveGame, BlueprintReadWrite)
 	FPlayerSaveData PlayerData;
 
+	/** Per-session player records. Index 0 is the listen-server player. */
+	UPROPERTY(SaveGame, BlueprintReadWrite)
+	TArray<FPlayerSaveData> Players;
+
 	UPROPERTY(SaveGame, BlueprintReadWrite)
 	TArray<FSpawnerSaveData> Spawners;
 

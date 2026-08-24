@@ -22,6 +22,8 @@ class AURA_API UWaitCooldownChange : public UBlueprintAsyncActionBase
 	GENERATED_BODY()
 	
 public:
+	virtual void Activate() override;
+
 	UFUNCTION(BlueprintCallable, meta=(BlueprintInternalUseOnly = "true"))
 	static UWaitCooldownChange* WaitForCooldownChange(UAbilitySystemComponent* ASC, const FGameplayTag& CooldownTag);
 	
@@ -40,6 +42,8 @@ protected:
 	
 	void CooldownTagChanged(FGameplayTag InCooldownTag, int32 NewCount);
 	void OnActiveEffectAdded(UAbilitySystemComponent* TargetASC, const FGameplayEffectSpec& SpecApplied, FActiveGameplayEffectHandle ActiveEffectHandle);
+	void BroadcastCooldownStart();
 	
 	FGameplayTag CooldownTag;
+	bool bCooldownActive = false;
 };

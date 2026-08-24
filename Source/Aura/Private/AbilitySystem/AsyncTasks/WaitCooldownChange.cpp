@@ -19,8 +19,19 @@ UWaitCooldownChange* UWaitCooldownChange::WaitForCooldownChange(UAbilitySystemCo
 	ASC->RegisterGameplayTagEvent(CooldownTag, EGameplayTagEventType::NewOrRemoved).AddUObject(WaitCooldownChange, &UWaitCooldownChange::CooldownTagChanged);
 	
 	ASC->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(WaitCooldownChange, &UWaitCooldownChange::OnActiveEffectAdded);
-	
 	return WaitCooldownChange; 
+}
+
+void UWaitCooldownChange::Activate()
+{
+	Super::Activate();
+	// Blueprint async output delegates are bound after the factory returns and
+	// before Activate is called. Broadcasting in the factory loses this event,
+	// which briefly resets an already-cooling icon to its bright brush.
+	if (ASC && ASC->GetTagCount(CooldownTag) > 0)
+	{
+		BroadcastCooldownStart();
+	}
 }
 
 void UWaitCooldownChange::EndTask()
@@ -31,6 +42,7 @@ void UWaitCooldownChange::EndTask()
 	}
 	
 	ASC->RegisterGameplayTagEvent(CooldownTag, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+	ASC->OnActiveGameplayEffectAddedDelegateToSelf.RemoveAll(this);
 	
 	SetReadyToDestroy();
 	MarkAsGarbage();
@@ -38,9 +50,38 @@ void UWaitCooldownChange::EndTask()
 
 void UWaitCooldownChange::CooldownTagChanged(FGameplayTag InCooldownTag, int32 NewCount)
 {
-	if (NewCount == 0)
+	if (NewCount > 0)
 	{
+		BroadcastCooldownStart();
+	}
+	else
+	{
+		bCooldownActive = false;
 		CooldownEnd.Broadcast(0.f);
+	}
+}
+
+void UWaitCooldownChange::BroadcastCooldownStart()
+{
+	if (!ASC || !CooldownTag.IsValid())
+	{
+		return;
+	}
+	FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(CooldownTag.GetSingleTagContainer());
+	TArray<float> TimesRemaining = ASC->GetActiveEffectsTimeRemaining(Query);
+	float TimeRemaining = 0.f;
+	for (const float Time : TimesRemaining)
+	{
+		TimeRemaining = FMath::Max(TimeRemaining, Time);
+	}
+	if (TimeRemaining > 0.f)
+	{
+		if (bCooldownActive)
+		{
+			return;
+		}
+		bCooldownActive = true;
+		CooldownStart.Broadcast(TimeRemaining);
 	}
 }
 
@@ -54,17 +95,6 @@ void UWaitCooldownChange::OnActiveEffectAdded(UAbilitySystemComponent* TargetASC
 	
 	if (AssetTags.HasTagExact(CooldownTag) || GrantedTags.HasTagExact(CooldownTag))
 	{
-		FGameplayEffectQuery GameplayEffectQuery = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(CooldownTag.GetSingleTagContainer());
-		TArray<float> TimesRemaining = ASC->GetActiveEffectsTimeRemaining(GameplayEffectQuery);
-		if (TimesRemaining.Num() > 0)
-		{
-			float TimeRemaining = TimesRemaining[0];
-			for (int32 i = 1; i < TimesRemaining.Num(); ++i)
-			{
-				TimeRemaining = FMath::Max(TimeRemaining, TimesRemaining[i]);
-			}
-			
-			CooldownStart.Broadcast(TimeRemaining);
-		}
+		BroadcastCooldownStart();
 	}
 }

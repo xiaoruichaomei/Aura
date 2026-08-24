@@ -75,10 +75,10 @@ void UAuraFireBlast::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	}
 
 	SpawnFireBalls();
-	if (!ActorInfo || !ActorInfo->IsNetAuthority())
-	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-	}
+	// Fireballs and damage are authoritative and are spawned by the server.
+	// Do not end the predicted client instance immediately: doing so replicates
+	// an early EndAbility to the server and cancels the authoritative execution
+	// before it can spawn the replicated fireballs.
 }
 
 void UAuraFireBlast::SpawnFireBalls()

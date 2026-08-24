@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Animation/AnimTypes.h"
 #include "AbilitySystem/Data/CharacterClassInfo.h"
 #include "Character/BaseCharacter.h"
 #include "Interface/EnemyInterface.h"
@@ -44,6 +45,7 @@ public:
 	void HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	void StunTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	virtual void Die() override;
+	virtual void MulticastHandleDeath_Implementation() override;
 
 	void SetPoolManaged(bool bInPoolManaged) { bPoolManaged = bInPoolManaged; }
 	void ActivateFromPool(const FTransform& InTransform, int32 InLevel = 1);
@@ -131,6 +133,7 @@ protected:
 	void OnRep_PoolState();
 
 	FTimerHandle PoolReturnTimer;
+	FTimerHandle StunAnimationTimer;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInterface>> InitialMeshMaterials;
@@ -144,9 +147,14 @@ protected:
 	FTransform InitialMeshRelativeTransform;
 	FTransform InitialWeaponRelativeTransform;
 	FName InitialWeaponAttachSocket;
+	FCollisionResponseContainer InitialMeshCollisionResponses;
+	TEnumAsByte<ECollisionEnabled::Type> InitialMeshCollisionEnabled = ECollisionEnabled::QueryOnly;
+	ERootMotionMode::Type InitialRootMotionMode = ERootMotionMode::RootMotionFromMontagesOnly;
 	bool bPoolDefaultsCaptured = false;
 
 	void SetPoolState(EEnemyPoolState NewState);
 	void CapturePoolDefaults();
 	void ResetNativePoolState();
+	void UpdateRootMotionMode();
+	void EnsureStunAnimation();
 };

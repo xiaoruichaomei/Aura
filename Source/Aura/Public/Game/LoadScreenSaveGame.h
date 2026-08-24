@@ -26,7 +26,7 @@ class AURA_API ULoadScreenSaveGame : public USaveGame
 	
 public:
 	UPROPERTY(SaveGame)
-	int32 SaveVersion = 1;
+	int32 SaveVersion = 3;
 
 	UPROPERTY()
 	FString SlotName = FString();

@@ -5,6 +5,7 @@
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
+#include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "AbilitySystem/AuraAbilitySystemLibrary.h"
 #include "Aura/Aura.h"
@@ -55,7 +56,7 @@ void AAuraProjectile::Destroyed()
 {
 	if (!bPoolManaged && !bHit && !HasAuthority())
 	{
-		PlayImpactEffects();
+		PlayImpactEffects(GetActorLocation());
 	}
 
 	Super::Destroyed();
@@ -79,7 +80,6 @@ void AAuraProjectile::ActivateFromPool(const FTransform& Transform, AActor* NewO
 	SetActorTransform(Transform, false, nullptr, ETeleportType::TeleportPhysics);
 	DamageEffectSpecHandle = FGameplayEffectSpecHandle();
 	bHit = false;
-	bHasBeenActivated = true;
 	bPoolActive = true;
 	OnRep_PoolActive();
 	ProjectileMovement->StopMovementImmediately();
@@ -93,6 +93,7 @@ void AAuraProjectile::DeactivateToPool()
 {
 	GetWorldTimerManager().ClearTimer(PoolLifeTimer);
 	bPoolActive = false;
+	SetTrailEffectsActive(false);
 	ProjectileMovement->StopMovementImmediately();
 	ProjectileMovement->Deactivate();
 	Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -110,36 +111,36 @@ void AAuraProjectile::DeactivateToPool()
 
 void AAuraProjectile::OnRep_PoolActive()
 {
-	SetActorHiddenInGame(!bPoolActive);
-	SetActorEnableCollision(bPoolActive);
-	Sphere->SetCollisionEnabled(bPoolActive ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
 	if (bPoolActive)
 	{
 		bHit = false;
-		bHasBeenActivated = true;
+		SetActorHiddenInGame(false);
+		SetActorEnableCollision(true);
+		Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		SetTrailEffectsActive(true);
 		ProjectileMovement->Activate(true);
 		StartFlightAudio();
 	}
 	else
 	{
+		SetTrailEffectsActive(false);
 		ProjectileMovement->StopMovementImmediately();
 		ProjectileMovement->Deactivate();
+		Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		SetActorEnableCollision(false);
+		SetActorHiddenInGame(true);
 		if (FlySoundComponent)
 		{
 			FlySoundComponent->Stop();
-		}
-		if (bHasBeenActivated && !bHit)
-		{
-			PlayImpactEffects();
 		}
 	}
 }
 
 void AAuraProjectile::HandleLifeExpired()
 {
-	if (!bHit)
+	if (!bPoolManaged && !bHit)
 	{
-		PlayImpactEffects();
+		PlayImpactEffects(GetActorLocation());
 	}
 	ReturnToPool();
 }
@@ -157,16 +158,21 @@ void AAuraProjectile::ReturnToPool()
 	Destroy();
 }
 
-void AAuraProjectile::PlayImpactEffects()
+void AAuraProjectile::MulticastPlayImpactEffects_Implementation(FVector_NetQuantize ImpactLocation)
+{
+	PlayImpactEffects(ImpactLocation);
+}
+
+void AAuraProjectile::PlayImpactEffects(const FVector& ImpactLocation)
 {
 	if (bHit)
 	{
 		return;
 	}
 	bHit = true;
-	UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation(), FRotator::ZeroRotator);
+	UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, ImpactLocation, FRotator::ZeroRotator);
 	UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-		this, ImpactEffect, GetActorLocation(), FRotator::ZeroRotator, FVector::OneVector, true, true,
+		this, ImpactEffect, ImpactLocation, FRotator::ZeroRotator, FVector::OneVector, true, true,
 		ENCPoolMethod::AutoRelease);
 	if (FlySoundComponent)
 	{
@@ -182,6 +188,28 @@ void AAuraProjectile::StartFlightAudio()
 	}
 }
 
+void AAuraProjectile::SetTrailEffectsActive(bool bActive)
+{
+	TInlineComponentArray<UNiagaraComponent*> NiagaraComponents;
+	GetComponents(NiagaraComponents);
+	for (UNiagaraComponent* NiagaraComponent : NiagaraComponents)
+	{
+		if (!IsValid(NiagaraComponent))
+		{
+			continue;
+		}
+
+		if (bActive)
+		{
+			NiagaraComponent->Activate(true);
+		}
+		else
+		{
+			NiagaraComponent->DeactivateImmediate();
+		}
+	}
+}
+
 void AAuraProjectile::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	if (!DamageEffectSpecHandle.IsValid() || DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser() == OtherActor)
@@ -194,22 +222,25 @@ void AAuraProjectile::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, 
 		return;
 	}
 	
-	if (!bHit)
-	{
-		PlayImpactEffects();
-	}
-	
 	if (HasAuthority())
 	{
+		if (bHit)
+		{
+			return;
+		}
+
+		FVector ImpactLocation = GetActorLocation();
+		if (bFromSweep)
+		{
+			ImpactLocation = FVector(SweepResult.ImpactPoint);
+		}
+		MulticastPlayImpactEffects(ImpactLocation);
+
 		if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
 		{
 			TargetASC->ApplyGameplayEffectSpecToSelf(*DamageEffectSpecHandle.Data.Get());
 		}
 		
 		ReturnToPool();
-	}
-	else
-	{
-		bHit = true;
 	}
 }

@@ -18,6 +18,8 @@ void UOverlayWidgetController::BroadcastInitialValues()
 		return;
 	}
 	bInitialValuesBroadcast = true;
+	OnPlayerLevelChangedDelegate.Broadcast(GetAuraPS()->GetPlayerLevel());
+	OnXPChanged(GetAuraPS()->GetXP());
 	OnHealthChanged.Broadcast(GetAuraAS()->GetHealth());
 	OnMaxHealthChanged.Broadcast(GetAuraAS()->GetMaxHealth());
 	OnManaChanged.Broadcast(GetAuraAS()->GetMana());

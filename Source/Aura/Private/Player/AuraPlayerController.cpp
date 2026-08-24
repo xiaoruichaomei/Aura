@@ -20,6 +20,7 @@
 #include "Engine/Engine.h"
 #include "Input/AuraInputComponent.h"
 #include "GameFramework/Character.h"
+#include "Game/AuraGameModeBase.h"
 #include "NiagaraFunctionLibrary.h"
 #include "UI/Widget/DamageTextComponent.h"
 #include "Actor/MagicCircle.h"
@@ -202,6 +203,26 @@ void AAuraPlayerController::ServerSetMagicCircleLocation_Implementation(FVector_
 		MagicCircleLocation = InLocation;
 		bHasMagicCircleLocation = true;
 	}
+}
+
+void AAuraPlayerController::ServerTravelToLoadMenu_Implementation()
+{
+	if (!HasAuthority() || !GetWorld())
+	{
+		return;
+	}
+
+	if (AAuraGameModeBase* GameMode = GetWorld()->GetAuthGameMode<AAuraGameModeBase>())
+	{
+		GameMode->SaveAndReturnToMainMenu();
+	}
+}
+
+void AAuraPlayerController::OnRep_Pawn()
+{
+	Super::OnRep_Pawn();
+	AuraAbilitySystemComponent = nullptr;
+	UpdateFixedCameraToPlayer();
 }
 
 bool AAuraPlayerController::GetBeamCursorLocation(FVector& OutLocation) const
@@ -444,7 +465,7 @@ void AAuraPlayerController::GetPlayerViewPoint(FVector& Location, FRotator& Rota
 
 UAuraAbilitySystemComponent* AAuraPlayerController::GetASC()
 {
-	if (!AuraAbilitySystemComponent)
+	if (!AuraAbilitySystemComponent || AuraAbilitySystemComponent->GetAvatarActor() != GetPawn())
 	{
 		AuraAbilitySystemComponent = Cast<UAuraAbilitySystemComponent>(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetPawn<APawn>()));
 	}

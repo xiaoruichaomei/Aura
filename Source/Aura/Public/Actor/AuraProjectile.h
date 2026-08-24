@@ -8,6 +8,7 @@
 #include "AuraProjectile.generated.h"
 
 class UNiagaraSystem;
+class UNiagaraComponent;
 class USphereComponent;
 class UProjectileMovementComponent;
 class APawn;
@@ -42,14 +43,17 @@ private:
 	UFUNCTION()
 	void OnRep_PoolActive();
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayImpactEffects(FVector_NetQuantize ImpactLocation);
+
 	void HandleLifeExpired();
 	void ReturnToPool();
-	void PlayImpactEffects();
+	void PlayImpactEffects(const FVector& ImpactLocation);
 	void StartFlightAudio();
+	void SetTrailEffectsActive(bool bActive);
 
 	bool bHit = false;
 	bool bPoolManaged = true;
-	bool bHasBeenActivated = false;
 
 	UPROPERTY(ReplicatedUsing=OnRep_PoolActive)
 	bool bPoolActive = false;

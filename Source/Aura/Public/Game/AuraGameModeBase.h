@@ -28,6 +28,10 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	bool SaveCurrentWorld();
+
+	/** Saves the authoritative world and returns every connected player to MainMenu. */
+	UFUNCTION(BlueprintCallable, Category="Save|Travel")
+	void SaveAndReturnToMainMenu();
 	void RestoreCurrentWorld();
 	
 	UPROPERTY(EditDefaultsOnly, Category="Character Class Defaults")
@@ -51,12 +55,20 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void PostLogin(APlayerController* NewPlayer) override;
 
 private:
+	void ExecutePendingMapTravel();
 	void AutoSaveCurrentWorld();
+	bool SaveCurrentWorldInternal();
 	void EnsureDefaultEnemySpawner();
 	ULoadScreenSaveGame* GetCurrentWorldSave() const;
 	bool bWorldEnemiesRestored = false;
+	bool bSkipEndPlaySave = false;
+	TSet<int32> RestoredPlayerIndices;
+	TMap<TWeakObjectPtr<APlayerController>, int32> PlayerSaveIndices;
 	FTimerHandle PlayerRestoreTimer;
 	FTimerHandle AutoSaveTimer;
+	FTimerHandle PendingMapTravelTimer;
+	FString PendingMapTravelPath;
 };

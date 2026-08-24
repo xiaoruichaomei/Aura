@@ -17,5 +17,11 @@ void ALoadScreenHUD::BeginPlay()
 	LoadScreenWidget->AddToViewport();
 	LoadScreenWidget->BlueprintInitializeWidget();
 	
-	LoadScreenViewModel->LoadData();
+	// SaveGame slots are local/server-owned data. A network client must not
+	// read them through its local LoadMenu GameMode, which may not have the
+	// configured SaveGame class and is not authoritative anyway.
+	if (GetWorld() && GetWorld()->GetNetMode() != NM_Client)
+	{
+		LoadScreenViewModel->LoadData();
+	}
 }

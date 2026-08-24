@@ -17,11 +17,15 @@
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Net/UnrealNetwork.h"
 #include "Subsystem/AuraEnemyPoolSubsystem.h"
 
 AAuraEnemy::AAuraEnemy()
 {
+	bReplicates = true;
+	SetReplicateMovement(true);
 	Tags.AddUnique(FName("Enemy"));
 	GetMesh()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	
@@ -106,8 +110,11 @@ void AAuraEnemy::PossessedBy(AController* NewController)
 
 void AAuraEnemy::HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
 {
-	bHitReacting = NewCount > 0;
+	// Stun owns the montage while it is active. A hit-react tag arriving in the
+	// same frame must not put the enemy back into the hit-react state.
+	bHitReacting = NewCount > 0 && !bStunned;
 	UpdateMovementSpeed();
+	UpdateRootMotionMode();
 	if (AuraAIController && AuraAIController->GetBlackboardComponent())
 	{
 		// 修正：之前固定写 false，客户端/黑板不知道真实受击状态
@@ -118,13 +125,13 @@ void AAuraEnemy::HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCou
 void AAuraEnemy::StunTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
 {
 	bStunned = NewCount > 0;
-
 	if (AuraAIController && AuraAIController->GetBlackboardComponent())
 	{
 		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("Stunned"), bStunned);
 	}
 
 	UpdateMovementSpeed();
+	UpdateRootMotionMode();
 
 	if (bStunned)
 	{
@@ -141,21 +148,55 @@ void AAuraEnemy::StunTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
 			const FAuraGameplayTags& AuraTags = FAuraGameplayTags::Get();
 			FGameplayTagContainer TagsToCancel;
 			TagsToCancel.AddTag(AuraTags.Abilities_Attack);
+			TagsToCancel.AddTag(AuraTags.Effects_HitReact);
 			AbilitySystemComponent->CancelAbilities(&TagsToCancel);
+
+			FGameplayTagContainer HitReactTags;
+			HitReactTags.AddTag(AuraTags.Effects_HitReact);
+			AbilitySystemComponent->RemoveActiveEffectsWithGrantedTags(HitReactTags);
 		}
 
-		// 播放循环眩晕蒙太奇（各端本地播放；标签事件已复制，动画不用再单独复制）
-		if (StunMontage && !GetMesh()->GetAnimInstance()->Montage_IsPlaying(StunMontage))
+		// Hit-react and attack montages can be active in the same frame as the stun
+		// tag. Stop them explicitly so the stun montage always wins its slot.
+		if (StunMontage)
 		{
-			PlayAnimMontage(StunMontage);
+			StopAnimMontage();
+			EnsureStunAnimation();
+			GetWorldTimerManager().SetTimer(
+				StunAnimationTimer, this, &AAuraEnemy::EnsureStunAnimation, 0.1f, true);
 		}
 	}
 	else
 	{
+		GetWorldTimerManager().ClearTimer(StunAnimationTimer);
 		if (StunMontage)
 		{
 			StopAnimMontage(StunMontage);
 		}
+	}
+}
+
+void AAuraEnemy::EnsureStunAnimation()
+{
+	if (!bStunned || bDead || (bPoolManaged && PoolState != EEnemyPoolState::Active))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	if (!StunMontage || !AnimInstance)
+	{
+		return;
+	}
+
+	if (!AnimInstance->Montage_IsPlaying(StunMontage))
+	{
+		PlayAnimMontage(StunMontage);
+	}
+	if (StunMontage->GetNumSections() > 0)
+	{
+		const FName FirstSection = StunMontage->GetSectionName(0);
+		AnimInstance->Montage_SetNextSection(FirstSection, FirstSection, StunMontage);
 	}
 }
 
@@ -203,6 +244,35 @@ void AAuraEnemy::Die()
 	Super::Die();
 }
 
+void AAuraEnemy::MulticastHandleDeath_Implementation()
+{
+	GetWorldTimerManager().ClearTimer(StunAnimationTimer);
+	Super::MulticastHandleDeath_Implementation();
+	if (HealthBar)
+	{
+		HealthBar->SetVisibility(false);
+	}
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		// The capsule loses collision during ragdoll. Leaving movement active lets
+		// it and the attached health bar fall while the physical mesh stays above.
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
+	}
+}
+
+void AAuraEnemy::UpdateRootMotionMode()
+{
+	if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+	{
+		// Hit-react and stun montages are cosmetic. Their root tracks must never
+		// move the replicated character capsule below the walkable floor.
+		AnimInstance->SetRootMotionMode((bStunned || bHitReacting)
+			? ERootMotionMode::IgnoreRootMotion
+			: InitialRootMotionMode);
+	}
+}
+
 void AAuraEnemy::ActivateFromPool(const FTransform& InTransform, int32 InLevel)
 {
 	if (!bPoolManaged)
@@ -221,7 +291,12 @@ void AAuraEnemy::ActivateFromPool(const FTransform& InTransform, int32 InLevel)
 	GetCharacterMovement()->SetActive(true);
 	GetCharacterMovement()->StopMovementImmediately();
 	Level = FMath::Max(1, InLevel);
-	AbilitySystemComponent->CancelAllAbilities();
+	// Keep long-lived listener/passive abilities alive across pooling. Only
+	// transient combat abilities can legitimately survive into a respawn.
+	FGameplayTagContainer AbilitiesToCancel;
+	AbilitiesToCancel.AddTag(FAuraGameplayTags::Get().Abilities_Attack);
+	AbilitiesToCancel.AddTag(FAuraGameplayTags::Get().Effects_HitReact);
+	AbilitySystemComponent->CancelAbilities(&AbilitiesToCancel);
 	FGameplayTagContainer DebuffTags;
 	DebuffTags.AddTag(FAuraGameplayTags::Get().Effects_Debuff);
 	AbilitySystemComponent->RemoveActiveEffectsWithTags(DebuffTags);
@@ -278,6 +353,8 @@ void AAuraEnemy::CapturePoolDefaults()
 	{
 		InitialMeshRelativeTransform = CharacterMesh->GetRelativeTransform();
 		InitialAnimClass = CharacterMesh->GetAnimClass();
+		InitialMeshCollisionResponses = CharacterMesh->GetCollisionResponseToChannels();
+		InitialMeshCollisionEnabled = CharacterMesh->GetCollisionEnabled();
 		for (int32 MaterialIndex = 0; MaterialIndex < CharacterMesh->GetNumMaterials(); ++MaterialIndex)
 		{
 			InitialMeshMaterials.Add(CharacterMesh->GetMaterial(MaterialIndex));
@@ -298,7 +375,31 @@ void AAuraEnemy::CapturePoolDefaults()
 void AAuraEnemy::ResetNativePoolState()
 {
 	CapturePoolDefaults();
+	GetWorldTimerManager().ClearTimer(StunAnimationTimer);
 	StopAnimMontage();
+	bDead = false;
+	bHitReacting = false;
+	bStunned = false;
+
+	// Death is multicast, so every client disables its local capsule. Pool
+	// activation must restore collision and movement on every machine as well,
+	// not only on the authoritative server that calls ActivateFromPool().
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->SetActive(true);
+		Movement->StopMovementImmediately();
+		Movement->CurrentRootMotion = FRootMotionSourceGroup();
+		Movement->ServerCorrectionRootMotion = FRootMotionSourceGroup();
+		Movement->RootMotionParams.Clear();
+		Movement->AnimRootMotionVelocity = FVector::ZeroVector;
+		Movement->SetMovementMode(MOVE_Walking);
+		if (GetNetMode() == NM_Client)
+		{
+			Movement->ResetPredictionData_Client();
+			Movement->bNetworkSmoothingComplete = true;
+		}
+	}
 
 	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
 	{
@@ -308,6 +409,8 @@ void AAuraEnemy::ResetNativePoolState()
 		CharacterMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 		CharacterMesh->SetEnableGravity(false);
 		CharacterMesh->SetRelativeTransform(InitialMeshRelativeTransform);
+		CharacterMesh->SetCollisionResponseToChannels(InitialMeshCollisionResponses);
+		CharacterMesh->SetCollisionEnabled(InitialMeshCollisionEnabled);
 		for (int32 MaterialIndex = 0; MaterialIndex < InitialMeshMaterials.Num(); ++MaterialIndex)
 		{
 			CharacterMesh->SetMaterial(MaterialIndex, InitialMeshMaterials[MaterialIndex]);
@@ -317,6 +420,10 @@ void AAuraEnemy::ResetNativePoolState()
 			CharacterMesh->SetAnimInstanceClass(InitialAnimClass);
 		}
 		CharacterMesh->InitAnim(true);
+		if (UAnimInstance* AnimInstance = CharacterMesh->GetAnimInstance())
+		{
+			AnimInstance->SetRootMotionMode(InitialRootMotionMode);
+		}
 		CharacterMesh->SetVisibility(true, true);
 	}
 
@@ -352,6 +459,7 @@ void AAuraEnemy::DeactivateToPool()
 		return;
 	}
 	GetWorldTimerManager().ClearTimer(PoolReturnTimer);
+	GetWorldTimerManager().ClearTimer(StunAnimationTimer);
 	OnEnemyDyingDelegate.Clear();
 	SetActorHiddenInGame(true);
 	SetActorEnableCollision(false);

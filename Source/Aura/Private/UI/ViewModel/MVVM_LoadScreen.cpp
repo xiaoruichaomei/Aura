@@ -30,9 +30,18 @@ void UMVVM_LoadScreen::InitializedLoadSlots()
 void UMVVM_LoadScreen::LoadData()
 {
 	AAuraGameModeBase* AuraGameMode = Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this));
+	if (!IsValid(AuraGameMode))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Aura: cannot load slot data; AuraGameMode is unavailable."));
+		return;
+	}
 	for (const TTuple<int32, UMVVM_LoadSlot*> LoadSlot : LoadSlots)
 	{
 		ULoadScreenSaveGame* SaveObject = AuraGameMode->GetSaveSlotData(LoadSlot.Value->GetLoadSlotName(), LoadSlot.Key);
+		if (!IsValid(SaveObject))
+		{
+			continue;
+		}
 		
 		const FString PlayerName = SaveObject->PlayerName;
 		TEnumAsByte<ESaveSlotStatus> SaveSlotStatus = SaveObject->SaveSlotStatus;
@@ -116,7 +125,29 @@ void UMVVM_LoadScreen::DeleteButtonPressed()
 
 void UMVVM_LoadScreen::PlayButtonPressed()
 {
+	if (!GetWorld())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Aura: cannot play; load screen has no world."));
+		return;
+	}
+
+	const ENetMode NetMode = GetWorld()->GetNetMode();
+	UE_LOG(LogTemp, Log, TEXT("Aura: PlayButtonPressed NetMode=%d"), static_cast<int32>(NetMode));
+
+	// A network client must never open the level locally. The listen server
+	// selects the save slot and travels; connected clients follow that travel.
+	if (NetMode == NM_Client)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Aura: ignoring client load-screen play request; waiting for server travel."));
+		return;
+	}
+
 	AAuraGameModeBase* AuraGameMode = Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this));
+	if (!IsValid(AuraGameMode))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Aura: cannot play; no authoritative AuraGameMode exists. Start this instance as the host."));
+		return;
+	}
 	if (IsValid(SelectedSlot))
 	{
 		if (UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this))

@@ -27,6 +27,7 @@ void UAuraAbilitySystemComponent::AddCharacterAbilities(const TArray<TSubclassOf
 
 void UAuraAbilitySystemComponent::ExportSavedAbilities(TArray<FSavedAbilityData>& OutAbilities)
 {
+	OutAbilities.Reset();
 	FScopedAbilityListLock ActiveScopeLock(*this);
 	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
@@ -51,9 +52,21 @@ void UAuraAbilitySystemComponent::RestoreSavedAbilities(const TArray<FSavedAbili
 		return;
 	}
 
-	const UAbilityInfo* AbilityInfo = UAuraAbilitySystemLibrary::GetAbilityInfo(GetAvatarActor());
+	// Saves created before version 2 appended the complete ability list on every
+	// autosave. Keep only the newest record for each ability while restoring.
+	TMap<FGameplayTag, FSavedAbilityData> UniqueAbilities;
 	for (const FSavedAbilityData& Data : SavedAbilities)
 	{
+		if (Data.AbilityTag.IsValid())
+		{
+			UniqueAbilities.Add(Data.AbilityTag, Data);
+		}
+	}
+
+	const UAbilityInfo* AbilityInfo = UAuraAbilitySystemLibrary::GetAbilityInfo(GetAvatarActor());
+	for (const TPair<FGameplayTag, FSavedAbilityData>& Pair : UniqueAbilities)
+	{
+		const FSavedAbilityData& Data = Pair.Value;
 		if (!Data.AbilityTag.IsValid())
 		{
 			continue;
@@ -593,11 +606,10 @@ void UAuraAbilitySystemComponent::OnRep_ActivateAbilities()
 {
 	Super::OnRep_ActivateAbilities();
 
-	if (!bStartupAbilitiesGiven)
-	{
-		bStartupAbilitiesGiven = true;
-		AbilitiesGiven.Broadcast();
-	}
+	// The client refresh RPC can arrive before the replicated AbilitySpec list.
+	// Broadcast on every list replication so the overlay cannot remain empty.
+	bStartupAbilitiesGiven = true;
+	AbilitiesGiven.Broadcast();
 
 	// AbilitySpec 复制完成后，恢复已装备被动的激活状态
 	ActivateEquippedPassiveAbilities();

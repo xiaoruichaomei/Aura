@@ -215,7 +215,10 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 					{
 						const FVector ContextKnockbackForce = UAuraAbilitySystemLibrary::GetKnockbackForce(Props.EffectContextHandle);
 						const FVector Direction = (Props.TargetAvatarActor->GetActorLocation() - Props.SourceAvatarActor->GetActorLocation()).GetSafeNormal2D();
-						const FVector KnockbackVelocity = ContextKnockbackForce.IsNearlyZero() ? Direction * KnockbackMagnitude : ContextKnockbackForce;
+						FVector KnockbackVelocity = ContextKnockbackForce.IsNearlyZero() ? Direction * KnockbackMagnitude : ContextKnockbackForce;
+						// A non-fatal hit must not launch a walking character through the floor.
+						// Upward knockback remains intact; death impulses use a separate path.
+						KnockbackVelocity.Z = FMath::Max(0.f, KnockbackVelocity.Z);
 						Props.TargetCharacter->LaunchCharacter(KnockbackVelocity, true, true);
 
 						// 打断敌人追击：短暂暂停路径跟随，避免 AI 每帧重设速度把击退覆盖掉
@@ -257,15 +260,17 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 				}
 			}
 
-			if (Props.SourceCharacter != Props.TargetCharacter)
+			if (IsValid(Props.TargetCharacter) && Props.SourceCharacter != Props.TargetCharacter)
 			{
 				const bool bBlockedHit = UAuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
 				const bool bCriticalHit = UAuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
-				if (AAuraPlayerController* SourcePlayerController = Cast<AAuraPlayerController>(Props.SourceCharacter->Controller))
+				if (AAuraPlayerController* SourcePlayerController = IsValid(Props.SourceController)
+					? Cast<AAuraPlayerController>(Props.SourceController) : nullptr)
 				{
 					SourcePlayerController->ShowDamageNumber(LocalIncomingDamage, Props.TargetCharacter, bBlockedHit, bCriticalHit);
 				}
-				else if (AAuraPlayerController* TargetPlayerController = Cast<AAuraPlayerController>(Props.TargetCharacter->Controller))
+				else if (AAuraPlayerController* TargetPlayerController = IsValid(Props.TargetController)
+					? Cast<AAuraPlayerController>(Props.TargetController) : nullptr)
 				{
 					TargetPlayerController->ShowDamageNumber(LocalIncomingDamage, Props.TargetCharacter, bBlockedHit, bCriticalHit);
 				}
@@ -278,7 +283,7 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 		const float LocalIncomingXP = GetIncomingXP();
 		SetIncomingXP(0.f);
 		
-		if (Props.SourceCharacter->Implements<UCombatInterface>() && Props.SourceCharacter->Implements<UPlayerInterface>())
+		if (IsValid(Props.SourceCharacter) && Props.SourceCharacter->Implements<UCombatInterface>() && Props.SourceCharacter->Implements<UPlayerInterface>())
 		{
 			const int32 CurrentLevel = ICombatInterface::Execute_GetLevel(Props.SourceCharacter);
 			const int32 CurrentXP = IPlayerInterface::Execute_GetXP(Props.SourceCharacter);
@@ -462,7 +467,7 @@ void UAuraAttributeSet::SetEffectProperties(const FGameplayEffectModCallbackData
 
 void UAuraAttributeSet::SendXPEvent(const FEffectProperties& Props)
 {
-	if (Props.TargetCharacter->Implements<UCombatInterface>())
+	if (IsValid(Props.TargetCharacter) && IsValid(Props.SourceCharacter) && Props.TargetCharacter->Implements<UCombatInterface>())
 	{
 		const int32 TargetLevel = ICombatInterface::Execute_GetLevel(Props.TargetCharacter);
 		const ECharacterClass TargetClass = ICombatInterface::Execute_GetCharacterClass(Props.TargetCharacter);

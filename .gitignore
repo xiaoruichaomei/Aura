@@ -6,6 +6,7 @@ DerivedDataCache/
 Build/
 /Data/
 /Docs/
+/.codex/
 .vs/
 *.sln
 *.slnx
