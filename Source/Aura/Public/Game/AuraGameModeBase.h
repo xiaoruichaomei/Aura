@@ -65,7 +65,10 @@ private:
 	bool SaveCurrentWorldInternal();
 	void EnsureDefaultEnemySpawner();
 	void RespawnPlayer(AController* Controller);
+	void ScheduleRespawnRetry(AController* Controller);
 	FTransform ResolveRespawnTransform(AController* Controller, const APawn* DeadPawn) const;
+	bool FindNearestValidRespawnTransform(AController* Controller, const FTransform& DesiredTransform,
+		FTransform& OutTransform);
 	ULoadScreenSaveGame* GetCurrentWorldSave() const;
 	bool bWorldEnemiesRestored = false;
 	bool bSkipEndPlaySave = false;
@@ -87,4 +90,19 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="0.0", ClampMax="1.0"))
 	float RespawnManaFraction = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="100.0"))
+	float RespawnSearchRadius = 1500.f;
+
+	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="25.0"))
+	float RespawnSearchStep = 100.f;
+
+	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="4", ClampMax="96"))
+	int32 RespawnSamplesPerRing = 16;
+
+	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="0.05"))
+	float RespawnRetryDelay = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="0.0"))
+	float RespawnCollisionPadding = 5.f;
 };

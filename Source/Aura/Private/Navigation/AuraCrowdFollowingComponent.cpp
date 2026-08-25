@@ -15,6 +15,10 @@ void UAuraCrowdFollowingComponent::ApplyCrowdAgentVelocity(
 	bool bTraversingLink, bool bIsNearEndOfPath)
 {
 	Super::ApplyCrowdAgentVelocity(NewVelocity, DestPathCorner, bTraversingLink, bIsNearEndOfPath);
+	if (AAuraPlayerController* Controller = Cast<AAuraPlayerController>(GetOwner()))
+	{
+		Controller->HandleCrowdSteeringVelocity(NewVelocity);
+	}
 
 	const UWorld* World = GetWorld();
 	if (World && GetStatus() == EPathFollowingStatus::Moving && World->GetTimeSeconds() >= NextMovementDebugTime)

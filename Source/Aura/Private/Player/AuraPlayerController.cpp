@@ -28,6 +28,7 @@
 #include "EnvironmentQuery/EnvQueryOption.h"
 #include "Input/AuraInputComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PawnMovementComponent.h"
 #include "Game/AuraGameModeBase.h"
 #include "NiagaraFunctionLibrary.h"
@@ -71,6 +72,8 @@ void AAuraPlayerController::Tick(float DeltaSeconds)
 	CursorTrace();
 	UpdateMagicCircleLocation();
 	AutoRun(DeltaSeconds);
+	ApplyClientAutoMoveSteering();
+	UpdateAutoMoveFacing(DeltaSeconds);
 }
 
 void AAuraPlayerController::ShowDamageNumber_Implementation(float DamageAmount, ACharacter* TargetCharacter, bool bBlockedHit, bool bCriticalHit)
@@ -145,7 +148,7 @@ void AAuraPlayerController::Move(const FInputActionValue& InputActionValue)
 	const FVector2D InputAxisVector = InputActionValue.Get<FVector2D>();
 	if (!InputAxisVector.IsNearlyZero())
 	{
-		StopAutoRun(false);
+		RequestStopAutoRun(false);
 	}
 	const FRotator Rotation = GetControlRotation();
 	const FRotator YawRotation(0.f, Rotation.Yaw, 0.f);
@@ -257,6 +260,30 @@ void AAuraPlayerController::ServerSetMagicCircleLocation_Implementation(FVector_
 	}
 }
 
+void AAuraPlayerController::ServerStartAutoMove_Implementation(FVector_NetQuantize Destination)
+{
+	StartAuthoritativeAutoMove(FVector(Destination));
+}
+
+void AAuraPlayerController::ServerStopAutoMove_Implementation(bool bStopImmediately)
+{
+	StopAutoRun(bStopImmediately);
+}
+
+void AAuraPlayerController::ClientSetAutoMoveActive_Implementation(bool bActive)
+{
+	bServerAutoMoveRequested = bActive;
+	if (!bActive)
+	{
+		AutoMoveSteeringVelocity = FVector::ZeroVector;
+	}
+}
+
+void AAuraPlayerController::ClientSetAutoMoveSteering_Implementation(FVector_NetQuantize10 SteeringVelocity)
+{
+	AutoMoveSteeringVelocity = FVector(SteeringVelocity);
+}
+
 void AAuraPlayerController::ServerTravelToLoadMenu_Implementation()
 {
 	if (!HasAuthority() || !GetWorld())
@@ -273,6 +300,23 @@ void AAuraPlayerController::ServerTravelToLoadMenu_Implementation()
 void AAuraPlayerController::OnRep_Pawn()
 {
 	Super::OnRep_Pawn();
+
+	// AController::OnRep_Pawn does not broadcast OnNewPawn on clients, while
+	// UPathFollowingComponent relies on that delegate to refresh its movement
+	// component. Reinitialize explicitly so initial possession and respawn both
+	// bind crowd path following to the replicated Pawn instead of the old one.
+	bTargeting = false;
+	FollowTime = 0.f;
+	StopAutoRun(true);
+	ConsecutiveRecoveryFailures = 0;
+	FailedRecoveryDirections.Reset();
+	if (CrowdPathFollowingComponent && GetPawn())
+	{
+		CrowdPathFollowingComponent->Initialize();
+		UE_LOG(LogAuraAutoMove, Display, TEXT("Pawn replicated: rebound path following to %s movement=%s"),
+			*GetNameSafe(GetPawn()), *GetNameSafe(GetPawn()->GetMovementComponent()));
+	}
+
 	AuraAbilitySystemComponent = nullptr;
 	UpdateFixedCameraToPlayer();
 }
@@ -375,7 +419,7 @@ void AAuraPlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 		}
 
 		bTargeting = ThisActor ? true : false;
-		StopAutoRun(false);
+		RequestStopAutoRun(false);
 
 		// 点击地面（移动或施法）时在所有端生成点击特效
 		if (CursorHit.bBlockingHit)
@@ -418,14 +462,7 @@ void AAuraPlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 		APawn* ControlledPawn = GetPawn();
 		if (ControlledPawn && FollowTime <= ShortPressThreshold)
 		{
-			UNavigationPath* NavPath = UNavigationSystemV1::FindPathToLocationSynchronously(this, ControlledPawn->GetActorLocation(), CachedDestination);
-			if (NavPath && NavPath->IsValid() && !NavPath->IsPartial() && NavPath->PathPoints.Num() > 0)
-			{
-				ConsecutiveRecoveryFailures = 0;
-				FailedRecoveryDirections.Reset();
-				RequestedDestination = NavPath->PathPoints.Last();
-				StartAutoMoveGoalQuery();
-			}
+			RequestAutoMove(CachedDestination);
 		}
 		FollowTime = 0.f;
 	}
@@ -533,6 +570,142 @@ void AAuraPlayerController::AutoRun(float DeltaSeconds)
 	UpdateAutoMoveProgress(DeltaSeconds);
 }
 
+void AAuraPlayerController::ApplyClientAutoMoveSteering()
+{
+	if (HasAuthority() || !IsLocalController() || !bServerAutoMoveRequested || IsInputBlocked())
+	{
+		return;
+	}
+
+	APawn* ControlledPawn = GetPawn();
+	const float SteeringSpeed = AutoMoveSteeringVelocity.Size2D();
+	if (!ControlledPawn || SteeringSpeed <= UE_KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+
+	float MaxSpeed = SteeringSpeed;
+	if (const ACharacter* ControlledCharacter = Cast<ACharacter>(ControlledPawn))
+	{
+		MaxSpeed = FMath::Max(1.f, ControlledCharacter->GetCharacterMovement()->GetMaxSpeed());
+	}
+	ControlledPawn->AddMovementInput(
+		AutoMoveSteeringVelocity.GetSafeNormal2D(), FMath::Clamp(SteeringSpeed / MaxSpeed, 0.f, 1.f));
+}
+
+void AAuraPlayerController::UpdateAutoMoveFacing(float DeltaSeconds)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!bServerAutoMoveRequested || !ControlledPawn)
+	{
+		return;
+	}
+
+	FVector MoveDirection = ControlledPawn->GetVelocity().GetSafeNormal2D();
+	if (MoveDirection.IsNearlyZero())
+	{
+		MoveDirection = AutoMoveSteeringVelocity.GetSafeNormal2D();
+	}
+	if (MoveDirection.IsNearlyZero())
+	{
+		return;
+	}
+
+	float TurnRate = 400.f;
+	if (const ACharacter* ControlledCharacter = Cast<ACharacter>(ControlledPawn))
+	{
+		TurnRate = FMath::Max(1.f, ControlledCharacter->GetCharacterMovement()->RotationRate.Yaw);
+	}
+	const FRotator CurrentRotation(0.f, ControlledPawn->GetActorRotation().Yaw, 0.f);
+	const FRotator DesiredRotation(0.f, MoveDirection.Rotation().Yaw, 0.f);
+	ControlledPawn->SetActorRotation(FMath::RInterpConstantTo(
+		CurrentRotation, DesiredRotation, DeltaSeconds, TurnRate));
+}
+
+void AAuraPlayerController::HandleCrowdSteeringVelocity(const FVector& SteeringVelocity)
+{
+	if (!HasAuthority() || IsLocalController() || !bServerAutoMoveRequested || !GetWorld())
+	{
+		return;
+	}
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	const bool bStopped = SteeringVelocity.IsNearlyZero();
+	const bool bWasStopped = LastSentAutoMoveSteeringVelocity.IsNearlyZero();
+	const FVector NewDirection = SteeringVelocity.GetSafeNormal2D();
+	const FVector PreviousDirection = LastSentAutoMoveSteeringVelocity.GetSafeNormal2D();
+	const bool bSharpTurn = !bStopped && !bWasStopped &&
+		FVector::DotProduct(NewDirection, PreviousDirection) < 0.94f;
+	if (CurrentTime < NextAutoMoveSteeringSendTime && bStopped == bWasStopped && !bSharpTurn)
+	{
+		return;
+	}
+
+	LastSentAutoMoveSteeringVelocity = SteeringVelocity;
+	AutoMoveSteeringVelocity = SteeringVelocity;
+	NextAutoMoveSteeringSendTime = CurrentTime + 0.05f;
+	ClientSetAutoMoveSteering(SteeringVelocity);
+}
+
+void AAuraPlayerController::RequestAutoMove(const FVector& Destination)
+{
+	if (Destination.ContainsNaN() || !GetPawn())
+	{
+		return;
+	}
+
+	if (HasAuthority())
+	{
+		StartAuthoritativeAutoMove(Destination);
+		return;
+	}
+
+	// CharacterMovement is client-predicted, but PathFollowing/Crowd movement is
+	// authority-driven. Let the server own the complete EQS and recovery state.
+	bServerAutoMoveRequested = true;
+	ServerStartAutoMove(Destination);
+}
+
+void AAuraPlayerController::StartAuthoritativeAutoMove(const FVector& Destination)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!HasAuthority() || Destination.ContainsNaN() || !ControlledPawn || IsInputBlocked())
+	{
+		bServerAutoMoveRequested = false;
+		ClientSetAutoMoveActive(false);
+		return;
+	}
+
+	StopAutoRun(false);
+	UNavigationPath* NavPath = UNavigationSystemV1::FindPathToLocationSynchronously(
+		this, ControlledPawn->GetActorLocation(), Destination);
+	if (!NavPath || !NavPath->IsValid() || NavPath->IsPartial() || NavPath->PathPoints.Num() == 0)
+	{
+		bServerAutoMoveRequested = false;
+		ClientSetAutoMoveActive(false);
+		UE_LOG(LogAuraAutoMove, Warning, TEXT("Server rejected auto move from=%s to=%s"),
+			*ControlledPawn->GetActorLocation().ToCompactString(), *Destination.ToCompactString());
+		return;
+	}
+
+	bServerAutoMoveRequested = true;
+	ClientSetAutoMoveActive(true);
+	ConsecutiveRecoveryFailures = 0;
+	FailedRecoveryDirections.Reset();
+	RequestedDestination = NavPath->PathPoints.Last();
+	StartAutoMoveGoalQuery();
+}
+
+void AAuraPlayerController::RequestStopAutoRun(bool bStopImmediately)
+{
+	const bool bNotifyServer = !HasAuthority() && bServerAutoMoveRequested;
+	StopAutoRun(bStopImmediately);
+	if (bNotifyServer)
+	{
+		ServerStopAutoMove(bStopImmediately);
+	}
+}
+
 void AAuraPlayerController::StopAutoRun(bool bStopImmediately)
 {
 	if (AutoMoveState != EAutoMoveState::Idle)
@@ -543,6 +716,14 @@ void AAuraPlayerController::StopAutoRun(bool bStopImmediately)
 			*ResolvedDestination.ToCompactString());
 	}
 	AbortAutoMoveQuery();
+	bServerAutoMoveRequested = false;
+	AutoMoveSteeringVelocity = FVector::ZeroVector;
+	LastSentAutoMoveSteeringVelocity = FVector::ZeroVector;
+	NextAutoMoveSteeringSendTime = 0.f;
+	if (HasAuthority())
+	{
+		ClientSetAutoMoveActive(false);
+	}
 	AutoMoveState = EAutoMoveState::Idle;
 	AutoMoveReplanCooldownRemaining = 0.f;
 	ResetAutoMoveProgress();
@@ -563,7 +744,7 @@ void AAuraPlayerController::StopAutoRun(bool bStopImmediately)
 bool AAuraPlayerController::RequestAutoRunPath(const FVector& Destination, EAutoMoveState MoveState)
 {
 	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn || !CrowdPathFollowingComponent)
+	if (!HasAuthority() || !ControlledPawn || !CrowdPathFollowingComponent)
 	{
 		return false;
 	}

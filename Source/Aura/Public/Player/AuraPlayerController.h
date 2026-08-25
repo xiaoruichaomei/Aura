@@ -61,6 +61,18 @@ public:
 	UFUNCTION(Server, Unreliable)
 	void ServerSetMagicCircleLocation(FVector_NetQuantize InLocation);
 
+	UFUNCTION(Server, Reliable)
+	void ServerStartAutoMove(FVector_NetQuantize Destination);
+
+	UFUNCTION(Server, Reliable)
+	void ServerStopAutoMove(bool bStopImmediately);
+
+	UFUNCTION(Client, Reliable)
+	void ClientSetAutoMoveActive(bool bActive);
+
+	UFUNCTION(Client, Unreliable)
+	void ClientSetAutoMoveSteering(FVector_NetQuantize10 SteeringVelocity);
+
 	/** Requests the listen server to save and move every connected player to MainMenu. */
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="Networking")
 	void ServerTravelToLoadMenu();
@@ -92,6 +104,12 @@ private:
 	void AbilityInputTagReleased(FGameplayTag InputTag);
 	void AbilityInputTagHeld(FGameplayTag InputTag);
 	void AutoRun(float DeltaSeconds);
+	void ApplyClientAutoMoveSteering();
+	void UpdateAutoMoveFacing(float DeltaSeconds);
+	void HandleCrowdSteeringVelocity(const FVector& SteeringVelocity);
+	void RequestAutoMove(const FVector& Destination);
+	void StartAuthoritativeAutoMove(const FVector& Destination);
+	void RequestStopAutoRun(bool bStopImmediately);
 	void StopAutoRun(bool bStopMovement);
 	bool RequestAutoRunPath(const FVector& Destination, EAutoMoveState MoveState);
 	void InitializeAutoMoveQueries();
@@ -151,6 +169,10 @@ private:
 	float FollowTime = 0.f;
 	float ShortPressThreshold = 0.5f;
 	bool bTargeting = false;
+	bool bServerAutoMoveRequested = false;
+	FVector AutoMoveSteeringVelocity = FVector::ZeroVector;
+	FVector LastSentAutoMoveSteeringVelocity = FVector::ZeroVector;
+	float NextAutoMoveSteeringSendTime = 0.f;
 	EAutoMoveState AutoMoveState = EAutoMoveState::Idle;
 	FVector RequestedDestination = FVector::ZeroVector;
 	FVector ResolvedDestination = FVector::ZeroVector;

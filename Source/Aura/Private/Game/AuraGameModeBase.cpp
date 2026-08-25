@@ -12,6 +12,7 @@
 #include "Player/AuraPlayerState.h"
 #include "Character/AuraCharacter.h"
 #include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "AbilitySystem/AuraAttributeSet.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
 #include "AuraGameplayTags.h"
@@ -23,6 +24,8 @@
 #include "Engine/NetConnection.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
+#include "GameFramework/Character.h"
+#include "NavigationSystem.h"
 #include "Player/AuraPlayerController.h"
 #include "TimerManager.h"
 
@@ -472,17 +475,157 @@ FTransform AAuraGameModeBase::ResolveRespawnTransform(AController* Controller, c
 	return DeadPawn ? DeadPawn->GetActorTransform() : FTransform::Identity;
 }
 
+bool AAuraGameModeBase::FindNearestValidRespawnTransform(AController* Controller,
+	const FTransform& DesiredTransform, FTransform& OutTransform)
+{
+	if (!Controller || !GetWorld())
+	{
+		return false;
+	}
+
+	const UClass* PawnClass = GetDefaultPawnClassForController(Controller);
+	const ACharacter* CharacterDefaults = PawnClass ? PawnClass->GetDefaultObject<ACharacter>() : nullptr;
+	const UCapsuleComponent* Capsule = CharacterDefaults ? CharacterDefaults->GetCapsuleComponent() : nullptr;
+	if (!Capsule)
+	{
+		return false;
+	}
+
+	float CapsuleRadius = 0.f;
+	float CapsuleHalfHeight = 0.f;
+	Capsule->GetScaledCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
+	const float ClearanceRadius = CapsuleRadius + FMath::Max(0.f, RespawnCollisionPadding);
+	const float ClearanceHalfHeight = FMath::Max(CapsuleHalfHeight - 1.f, ClearanceRadius);
+	const FCollisionShape ClearanceShape = FCollisionShape::MakeCapsule(ClearanceRadius, ClearanceHalfHeight);
+	const FName CollisionProfile = Capsule->GetCollisionProfileName();
+
+	auto IsLocationClear = [this, &ClearanceShape, CollisionProfile](const FVector& Location)
+	{
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(AuraPlayerRespawnClearance), false);
+		if (!CollisionProfile.IsNone())
+		{
+			return !GetWorld()->OverlapBlockingTestByProfile(
+				Location, FQuat::Identity, CollisionProfile, ClearanceShape, QueryParams);
+		}
+		return !GetWorld()->OverlapBlockingTestByChannel(
+			Location, FQuat::Identity, ECC_Pawn, ClearanceShape, QueryParams);
+	};
+
+	if (IsLocationClear(DesiredTransform.GetLocation()))
+	{
+		OutTransform = DesiredTransform;
+		return true;
+	}
+
+	UNavigationSystemV1* NavigationSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+	if (!NavigationSystem)
+	{
+		return false;
+	}
+
+	struct FRespawnCandidate
+	{
+		FVector Location = FVector::ZeroVector;
+		double DistanceSquared = 0.0;
+	};
+
+	TArray<FRespawnCandidate> Candidates;
+	const float SearchStep = FMath::Max(25.f, RespawnSearchStep);
+	const float SearchRadius = FMath::Max(SearchStep, RespawnSearchRadius);
+	const int32 NumRings = FMath::CeilToInt(SearchRadius / SearchStep);
+	const int32 MinimumSamples = FMath::Clamp(RespawnSamplesPerRing, 4, 96);
+	const FVector DesiredFloorLocation = DesiredTransform.GetLocation()
+		- FVector::UpVector * CapsuleHalfHeight;
+	const FVector ProjectionExtent(
+		FMath::Max(SearchStep * 0.5f, ClearanceRadius),
+		FMath::Max(SearchStep * 0.5f, ClearanceRadius),
+		FMath::Max(250.f, CapsuleHalfHeight * 2.f));
+	const float DuplicateDistanceSquared = FMath::Square(FMath::Max(10.f, CapsuleRadius * 0.25f));
+
+	for (int32 RingIndex = 1; RingIndex <= NumRings; ++RingIndex)
+	{
+		const float RingRadius = FMath::Min(RingIndex * SearchStep, SearchRadius);
+		const int32 CircumferenceSamples = FMath::CeilToInt(2.f * UE_PI * RingRadius / SearchStep);
+		const int32 NumSamples = FMath::Clamp(FMath::Max(MinimumSamples, CircumferenceSamples), 4, 96);
+		const float AngleOffset = (RingIndex % 2 == 0) ? UE_PI / NumSamples : 0.f;
+
+		for (int32 SampleIndex = 0; SampleIndex < NumSamples; ++SampleIndex)
+		{
+			const float Angle = AngleOffset + 2.f * UE_PI * SampleIndex / NumSamples;
+			const FVector SampleLocation = DesiredFloorLocation + FVector(
+				FMath::Cos(Angle) * RingRadius,
+				FMath::Sin(Angle) * RingRadius,
+				0.f);
+			FNavLocation ProjectedLocation;
+			if (!NavigationSystem->ProjectPointToNavigation(SampleLocation, ProjectedLocation, ProjectionExtent))
+			{
+				continue;
+			}
+
+			const FVector ActorLocation = ProjectedLocation.Location
+				+ FVector::UpVector * (CapsuleHalfHeight + 2.f);
+			if (Candidates.ContainsByPredicate([&ActorLocation, DuplicateDistanceSquared](const FRespawnCandidate& Existing)
+			{
+				return FVector::DistSquared(Existing.Location, ActorLocation) <= DuplicateDistanceSquared;
+			}))
+			{
+				continue;
+			}
+
+			Candidates.Add({ActorLocation,
+				FVector::DistSquared(DesiredTransform.GetLocation(), ActorLocation)});
+		}
+	}
+
+	Candidates.Sort([](const FRespawnCandidate& A, const FRespawnCandidate& B)
+	{
+		return A.DistanceSquared < B.DistanceSquared;
+	});
+
+	for (const FRespawnCandidate& Candidate : Candidates)
+	{
+		if (IsLocationClear(Candidate.Location))
+		{
+			OutTransform = DesiredTransform;
+			OutTransform.SetLocation(Candidate.Location);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void AAuraGameModeBase::ScheduleRespawnRetry(AController* Controller)
+{
+	if (!HasAuthority() || !IsValid(Controller))
+	{
+		return;
+	}
+
+	const TWeakObjectPtr<AController> ControllerKey(Controller);
+	if (!PendingRespawnControllers.Contains(ControllerKey))
+	{
+		return;
+	}
+
+	FTimerHandle& RespawnTimer = PlayerRespawnTimers.FindOrAdd(ControllerKey);
+	FTimerDelegate RespawnDelegate;
+	RespawnDelegate.BindUObject(this, &AAuraGameModeBase::RespawnPlayer, Controller);
+	GetWorldTimerManager().SetTimer(
+		RespawnTimer, RespawnDelegate, FMath::Max(0.05f, RespawnRetryDelay), false);
+}
+
 void AAuraGameModeBase::RespawnPlayer(AController* Controller)
 {
 	const TWeakObjectPtr<AController> ControllerKey(Controller);
 	PlayerRespawnTimers.Remove(ControllerKey);
-	if (!HasAuthority() || !IsValid(Controller) || !PendingRespawnControllers.Remove(ControllerKey))
+	if (!HasAuthority() || !IsValid(Controller) || !PendingRespawnControllers.Contains(ControllerKey))
 	{
 		return;
 	}
 
 	const APawn* OldPawn = Controller->GetPawn();
-	const FTransform RespawnTransform = ResolveRespawnTransform(Controller, OldPawn);
+	const FTransform DesiredRespawnTransform = ResolveRespawnTransform(Controller, OldPawn);
 	APawn* PawnToDestroy = Controller->GetPawn();
 	Controller->UnPossess();
 	if (IsValid(PawnToDestroy))
@@ -490,13 +633,26 @@ void AAuraGameModeBase::RespawnPlayer(AController* Controller)
 		PawnToDestroy->Destroy();
 	}
 
+	FTransform RespawnTransform;
+	if (!FindNearestValidRespawnTransform(Controller, DesiredRespawnTransform, RespawnTransform))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("Aura: no clear respawn point found for %s within %.0f units of %s; retrying."),
+			*GetNameSafe(Controller), RespawnSearchRadius,
+			*DesiredRespawnTransform.GetLocation().ToCompactString());
+		ScheduleRespawnRetry(Controller);
+		return;
+	}
+
 	RestartPlayerAtTransform(Controller, RespawnTransform);
 	if (!IsValid(Controller->GetPawn()))
 	{
-		UE_LOG(LogTemp, Error, TEXT("Aura: failed to respawn player %s at %s."),
+		UE_LOG(LogTemp, Warning, TEXT("Aura: failed to respawn player %s at %s; retrying."),
 			*GetNameSafe(Controller), *RespawnTransform.GetLocation().ToCompactString());
+		ScheduleRespawnRetry(Controller);
 		return;
 	}
+	PendingRespawnControllers.Remove(ControllerKey);
 
 	if (AAuraPlayerState* AuraPlayerState = Controller->GetPlayerState<AAuraPlayerState>())
 	{
@@ -513,8 +669,9 @@ void AAuraGameModeBase::RespawnPlayer(AController* Controller)
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("Aura: respawned player %s at %s."),
-		*GetNameSafe(Controller), *RespawnTransform.GetLocation().ToCompactString());
+	UE_LOG(LogTemp, Log, TEXT("Aura: respawned player %s at %s (requested %s)."),
+		*GetNameSafe(Controller), *RespawnTransform.GetLocation().ToCompactString(),
+		*DesiredRespawnTransform.GetLocation().ToCompactString());
 }
 
 ULoadScreenSaveGame* AAuraGameModeBase::GetCurrentWorldSave() const
