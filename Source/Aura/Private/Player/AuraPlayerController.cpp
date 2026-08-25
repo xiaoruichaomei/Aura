@@ -35,7 +35,6 @@
 #include "UI/Widget/DamageTextComponent.h"
 #include "Actor/MagicCircle.h"
 #include "UObject/ConstructorHelpers.h"
-#include "../Aura.h"
 #include "Materials/MaterialInterface.h"
 #include "Navigation/AuraCrowdFollowingComponent.h"
 #include "Engine/OverlapResult.h"
