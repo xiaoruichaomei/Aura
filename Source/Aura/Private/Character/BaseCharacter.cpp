@@ -215,6 +215,19 @@ void ABaseCharacter::AddCharacterAbilities()
 	AuraASC->AddCharacterAbilities(StartupAbility, PassiveAbility);
 }
 
+void ABaseCharacter::ReactivatePersistentCharacterAbilities()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(AbilitySystemComponent))
+	{
+		AuraASC->ReactivatePersistentAbilities(PassiveAbility);
+	}
+}
+
 void ABaseCharacter::Dissolve()
 {
 	if (IsValid(DissolveMaterialInstance))

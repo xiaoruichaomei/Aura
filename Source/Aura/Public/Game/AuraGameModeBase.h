@@ -11,6 +11,7 @@ class USaveGame;
 class UMVVM_LoadSlot;
 class UAbilityInfo;
 class UCharacterClassInfo;
+class AAuraCharacter;
 struct FMapSaveData;
 /**
  * 
@@ -33,6 +34,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Save|Travel")
 	void SaveAndReturnToMainMenu();
 	void RestoreCurrentWorld();
+	void HandlePlayerDeath(AAuraCharacter* DeadCharacter);
 	
 	UPROPERTY(EditDefaultsOnly, Category="Character Class Defaults")
 	TObjectPtr<UCharacterClassInfo> CharacterClassInfo;
@@ -62,13 +64,27 @@ private:
 	void AutoSaveCurrentWorld();
 	bool SaveCurrentWorldInternal();
 	void EnsureDefaultEnemySpawner();
+	void RespawnPlayer(AController* Controller);
+	FTransform ResolveRespawnTransform(AController* Controller, const APawn* DeadPawn) const;
 	ULoadScreenSaveGame* GetCurrentWorldSave() const;
 	bool bWorldEnemiesRestored = false;
 	bool bSkipEndPlaySave = false;
 	TSet<int32> RestoredPlayerIndices;
 	TMap<TWeakObjectPtr<APlayerController>, int32> PlayerSaveIndices;
+	TMap<TWeakObjectPtr<AController>, FTransform> PlayerRespawnTransforms;
+	TSet<TWeakObjectPtr<AController>> PendingRespawnControllers;
+	TMap<TWeakObjectPtr<AController>, FTimerHandle> PlayerRespawnTimers;
 	FTimerHandle PlayerRestoreTimer;
 	FTimerHandle AutoSaveTimer;
 	FTimerHandle PendingMapTravelTimer;
 	FString PendingMapTravelPath;
+
+	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="0.0"))
+	float PlayerRespawnDelay = 3.f;
+
+	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float RespawnHealthFraction = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category="Player Respawn", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float RespawnManaFraction = 0.5f;
 };

@@ -5,8 +5,10 @@
 
 #include "AIController.h"
 #include "BehaviorTree/BTFunctionLibrary.h"
+#include "Engine/World.h"
 #include "GameFramework/Pawn.h"
-#include "Kismet/GameplayStatics.h"
+#include "GameFramework/PlayerController.h"
+#include "Interface/CombatInterface.h"
 
 void UBTService_FindNearestPlayer::TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
 {
@@ -16,23 +18,27 @@ void UBTService_FindNearestPlayer::TickNode(UBehaviorTreeComponent& OwnerComp, u
 	
 	float ClosestDistance = TNumericLimits<float>::Max();
 	AActor* ClosestActor = nullptr;
-	// Do not rely on Blueprint Actor Tags here. Pooled enemies are spawned at
-	// runtime and may not inherit the same tag setup as level-placed enemies.
-	for (int32 PlayerIndex = 0; ; ++PlayerIndex)
+	// Iterate controllers instead of stopping at the first missing Pawn. During
+	// respawn one player's controller temporarily has no Pawn, while other players
+	// are still valid targets.
+	for (FConstPlayerControllerIterator It = OwningPawn->GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
-		APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(OwningPawn, PlayerIndex);
-		if (!PlayerPawn)
+		APlayerController* PlayerController = It->Get();
+		APawn* PlayerPawn = PlayerController ? PlayerController->GetPawn() : nullptr;
+		if (!IsValid(PlayerPawn) || PlayerPawn == OwningPawn)
 		{
-			break;
+			continue;
 		}
-		if (PlayerPawn != OwningPawn)
+		if (PlayerPawn->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(PlayerPawn))
 		{
-			const float Distance = OwningPawn->GetDistanceTo(PlayerPawn);
-			if (Distance < ClosestDistance)
-			{
-				ClosestDistance = Distance;
-				ClosestActor = PlayerPawn;
-			}
+			continue;
+		}
+
+		const float Distance = OwningPawn->GetDistanceTo(PlayerPawn);
+		if (Distance < ClosestDistance)
+		{
+			ClosestDistance = Distance;
+			ClosestActor = PlayerPawn;
 		}
 	}
 	UBTFunctionLibrary::SetBlackboardValueAsObject(this, TargetToFollow, ClosestActor);

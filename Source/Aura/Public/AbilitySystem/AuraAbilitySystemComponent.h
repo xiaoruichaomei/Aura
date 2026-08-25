@@ -27,6 +27,7 @@ class AURA_API UAuraAbilitySystemComponent : public UAbilitySystemComponent
 public:
 	void AbilityActorInfoSet();
 	void AddCharacterAbilities(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbilities, const TArray<TSubclassOf<UGameplayAbility>>& PassiveAbilities);
+	void ReactivatePersistentAbilities(const TArray<TSubclassOf<UGameplayAbility>>& PersistentAbilities);
 	
 	void AbilityInputTagReleased(const FGameplayTag& InputTag);
 	void AbilityInputTagPressed(const FGameplayTag& InputTag);

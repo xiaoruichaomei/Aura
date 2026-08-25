@@ -13,6 +13,7 @@
 #include "Engine/HitResult.h"
 #include "GameFramework/Pawn.h"
 #include "Interface/EnemyInterface.h"
+#include "Interface/CombatInterface.h"
 #include "GameplayTagContainer.h"
 #include "NavigationPath.h"
 #include "NavigationData.h"
@@ -137,6 +138,10 @@ void AAuraPlayerController::SetupInputComponent()
 
 void AAuraPlayerController::Move(const FInputActionValue& InputActionValue)
 {
+	if (IsInputBlocked())
+	{
+		return;
+	}
 	const FVector2D InputAxisVector = InputActionValue.Get<FVector2D>();
 	if (!InputAxisVector.IsNearlyZero())
 	{
@@ -328,6 +333,10 @@ bool AAuraPlayerController::IsInputBlocked() const
 {
 	if (APawn* ControlledPawn = GetPawn())
 	{
+		if (ControlledPawn->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(ControlledPawn))
+		{
+			return true;
+		}
 		if (UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn))
 		{
 			return ASC->HasMatchingGameplayTag(FAuraGameplayTags::Get().Player_Block);
@@ -338,6 +347,11 @@ bool AAuraPlayerController::IsInputBlocked() const
 
 void AAuraPlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 {
+	if (const APawn* ControlledPawn = GetPawn(); ControlledPawn &&
+		ControlledPawn->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(ControlledPawn))
+	{
+		return;
+	}
 	if (!InputTag.MatchesTagExact(FAuraGameplayTags::Get().Input_RMB) && MagicCircle)
 	{
 		FVector TargetLocation;
@@ -373,6 +387,11 @@ void AAuraPlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 
 void AAuraPlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 {
+	if (const APawn* ControlledPawn = GetPawn(); ControlledPawn &&
+		ControlledPawn->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(ControlledPawn))
+	{
+		return;
+	}
 	if (!InputTag.MatchesTagExact(FAuraGameplayTags::Get().Input_RMB))
 	{
 		if (GetASC())
@@ -414,6 +433,11 @@ void AAuraPlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 
 void AAuraPlayerController::AbilityInputTagHeld(FGameplayTag InputTag)
 {
+	if (const APawn* ControlledPawn = GetPawn(); ControlledPawn &&
+		ControlledPawn->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(ControlledPawn))
+	{
+		return;
+	}
 	if (!InputTag.MatchesTagExact(FAuraGameplayTags::Get().Input_RMB))
 	{
 		if (GetASC())
@@ -451,6 +475,14 @@ void AAuraPlayerController::AbilityInputTagHeld(FGameplayTag InputTag)
 			ControlledPawn->AddMovementInput(WorldDirection);
 		}
 	}
+}
+
+void AAuraPlayerController::HandleControlledPawnDeath()
+{
+	bTargeting = false;
+	FollowTime = 0.f;
+	HideMagicCircle();
+	StopAutoRun(true);
 }
 
 void AAuraPlayerController::AutoRun(float DeltaSeconds)

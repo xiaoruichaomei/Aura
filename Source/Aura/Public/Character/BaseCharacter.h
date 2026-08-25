@@ -59,6 +59,7 @@ protected:
 	virtual void InitializeDefaultAttributes() const;
 	void RefreshDefaultSecondaryAttributes() const;
 	void AddCharacterAbilities();
+	void ReactivatePersistentCharacterAbilities();
 	void Dissolve();
 	
 	UFUNCTION(BlueprintImplementableEvent)

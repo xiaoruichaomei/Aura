@@ -16,6 +16,7 @@
 #include "BehaviorTree/BehaviorTreeComponent.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
+#include "BrainComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
@@ -615,6 +616,37 @@ void AAuraEnemy::SetCombatTarget_Implementation(AActor* InCombatTarget)
 AActor* AAuraEnemy::GetCombatTarget_Implementation() const
 {
 	return CombatTarget;
+}
+
+void AAuraEnemy::HandleTargetActorInvalidated(AActor* InvalidTarget)
+{
+	UBlackboardComponent* BlackboardComponent = AuraAIController
+		? AuraAIController->GetBlackboardComponent() : nullptr;
+	const bool bHasInvalidCombatTarget = CombatTarget == InvalidTarget;
+	const bool bHasInvalidBlackboardTarget = BlackboardComponent
+		&& BlackboardComponent->GetValueAsObject(FName("TargetToFollow")) == InvalidTarget;
+	if (!bHasInvalidCombatTarget && !bHasInvalidBlackboardTarget)
+	{
+		return;
+	}
+
+	CombatTarget = nullptr;
+	FGameplayTagContainer AttackTags;
+	AttackTags.AddTag(FAuraGameplayTags::Get().Abilities_Attack);
+	AbilitySystemComponent->CancelAbilities(&AttackTags);
+
+	if (AuraAIController)
+	{
+		AuraAIController->StopMovement();
+		if (BlackboardComponent)
+		{
+			BlackboardComponent->ClearValue(FName("TargetToFollow"));
+		}
+		if (UBrainComponent* BrainComponent = AuraAIController->GetBrainComponent())
+		{
+			BrainComponent->RestartLogic();
+		}
+	}
 }
 
 void AAuraEnemy::InitAbilityActorInfo()

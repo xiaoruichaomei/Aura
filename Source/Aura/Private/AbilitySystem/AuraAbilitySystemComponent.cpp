@@ -13,6 +13,7 @@
 
 void UAuraAbilitySystemComponent::AbilityActorInfoSet()
 {
+	OnGameplayEffectAppliedDelegateToSelf.RemoveAll(this);
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &UAuraAbilitySystemComponent::ClientEffectApplied);
 
 	// 角色加载/重生重新绑定 ActorInfo 后，恢复已装备被动的激活状态（能力 Spec 持久在 PlayerState 的 ASC 上）
@@ -23,6 +24,33 @@ void UAuraAbilitySystemComponent::AddCharacterAbilities(const TArray<TSubclassOf
 {
 	AddStartupAbilities(StartupAbilities);
 	AddPassiveAbilities(PassiveAbilities);
+}
+
+void UAuraAbilitySystemComponent::ReactivatePersistentAbilities(const TArray<TSubclassOf<UGameplayAbility>>& PersistentAbilities)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !GetAvatarActor())
+	{
+		return;
+	}
+
+	for (const TSubclassOf<UGameplayAbility>& AbilityClass : PersistentAbilities)
+	{
+		if (!AbilityClass)
+		{
+			continue;
+		}
+
+		FGameplayAbilitySpec* Spec = FindAbilitySpecFromClass(AbilityClass);
+		if (!Spec)
+		{
+			FGameplayAbilitySpec NewSpec(AbilityClass, 1);
+			GiveAbilityAndActivateOnce(NewSpec);
+		}
+		else if (!Spec->IsActive())
+		{
+			TryActivateAbility(Spec->Handle);
+		}
+	}
 }
 
 void UAuraAbilitySystemComponent::ExportSavedAbilities(TArray<FSavedAbilityData>& OutAbilities)
@@ -640,6 +668,10 @@ void UAuraAbilitySystemComponent::AddStartupAbilities(const TArray<TSubclassOf<U
 {
 	for (const auto& AbilityClass : StartupAbilities)
 	{
+		if (!AbilityClass || FindAbilitySpecFromClass(AbilityClass))
+		{
+			continue;
+		}
 		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, 1);
 		const UAuraGameplayAbility* AuraAbility = Cast<UAuraGameplayAbility>(AbilitySpec.Ability);
 		if (AuraAbility)
@@ -657,6 +689,10 @@ void UAuraAbilitySystemComponent::AddPassiveAbilities(const TArray<TSubclassOf<U
 {
 	for (const auto& AbilityClass : PassiveAbilities)
 	{
+		if (!AbilityClass || FindAbilitySpecFromClass(AbilityClass))
+		{
+			continue;
+		}
 		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, 1);
 		if (const UAuraGameplayAbility* AuraAbility = Cast<UAuraGameplayAbility>(AbilitySpec.Ability))
 		{

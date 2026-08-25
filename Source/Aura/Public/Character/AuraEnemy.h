@@ -61,6 +61,7 @@ public:
 	int32 GetEnemyLevel() const { return Level; }
 	float GetCurrentHealth() const;
 	void RestoreHealth(float InHealth);
+	void HandleTargetActorInvalidated(AActor* InvalidTarget);
 
 	FEnemyDyingSignature OnEnemyDyingDelegate;
 

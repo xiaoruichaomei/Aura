@@ -14,6 +14,7 @@
 #include "Components/BoxComponent.h"
 #include "AbilitySystem/AuraAttributeSet.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
+#include "AuraGameplayTags.h"
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
 #include "UObject/SoftObjectPath.h"
@@ -21,7 +22,9 @@
 #include "Engine/NetDriver.h"
 #include "Engine/NetConnection.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerStart.h"
 #include "Player/AuraPlayerController.h"
+#include "TimerManager.h"
 
 namespace AuraSaveConstants
 {
@@ -404,6 +407,116 @@ void AAuraGameModeBase::PostLogin(APlayerController* NewPlayer)
 	}
 }
 
+void AAuraGameModeBase::HandlePlayerDeath(AAuraCharacter* DeadCharacter)
+{
+	if (!HasAuthority() || !IsValid(DeadCharacter))
+	{
+		return;
+	}
+
+	AController* Controller = DeadCharacter->GetController();
+	if (!IsValid(Controller))
+	{
+		return;
+	}
+
+	const TWeakObjectPtr<AController> ControllerKey(Controller);
+	if (PendingRespawnControllers.Contains(ControllerKey))
+	{
+		return;
+	}
+
+	if (!PlayerRespawnTransforms.Contains(ControllerKey))
+	{
+		PlayerRespawnTransforms.Add(ControllerKey, ResolveRespawnTransform(Controller, DeadCharacter));
+	}
+	PendingRespawnControllers.Add(ControllerKey);
+
+	AAuraPlayerState* AuraPlayerState = Controller->GetPlayerState<AAuraPlayerState>();
+	if (UAuraAbilitySystemComponent* AuraASC = AuraPlayerState
+		? Cast<UAuraAbilitySystemComponent>(AuraPlayerState->GetAbilitySystemComponent()) : nullptr)
+	{
+		AuraASC->CancelAllAbilities();
+		FGameplayTagContainer DebuffTags;
+		DebuffTags.AddTag(FAuraGameplayTags::Get().Effects_Debuff);
+		AuraASC->RemoveActiveEffectsWithTags(DebuffTags);
+		AuraASC->SetLooseGameplayTagCount(FAuraGameplayTags::Get().Player_Block, 0);
+	}
+	for (TActorIterator<AAuraEnemy> It(GetWorld()); It; ++It)
+	{
+		It->HandleTargetActorInvalidated(DeadCharacter);
+	}
+
+	Controller->StopMovement();
+	FTimerHandle& RespawnTimer = PlayerRespawnTimers.FindOrAdd(ControllerKey);
+	FTimerDelegate RespawnDelegate;
+	RespawnDelegate.BindUObject(this, &AAuraGameModeBase::RespawnPlayer, Controller);
+	GetWorldTimerManager().SetTimer(RespawnTimer, RespawnDelegate, PlayerRespawnDelay, false);
+	UE_LOG(LogTemp, Log, TEXT("Aura: player %s died; respawning in %.1f seconds."),
+		*GetNameSafe(Controller), PlayerRespawnDelay);
+}
+
+FTransform AAuraGameModeBase::ResolveRespawnTransform(AController* Controller, const APawn* DeadPawn) const
+{
+	if (Controller)
+	{
+		if (const FTransform* SavedTransform = PlayerRespawnTransforms.Find(TWeakObjectPtr<AController>(Controller)))
+		{
+			return *SavedTransform;
+		}
+		if (Controller->StartSpot.IsValid())
+		{
+			return Controller->StartSpot->GetActorTransform();
+		}
+	}
+	return DeadPawn ? DeadPawn->GetActorTransform() : FTransform::Identity;
+}
+
+void AAuraGameModeBase::RespawnPlayer(AController* Controller)
+{
+	const TWeakObjectPtr<AController> ControllerKey(Controller);
+	PlayerRespawnTimers.Remove(ControllerKey);
+	if (!HasAuthority() || !IsValid(Controller) || !PendingRespawnControllers.Remove(ControllerKey))
+	{
+		return;
+	}
+
+	const APawn* OldPawn = Controller->GetPawn();
+	const FTransform RespawnTransform = ResolveRespawnTransform(Controller, OldPawn);
+	APawn* PawnToDestroy = Controller->GetPawn();
+	Controller->UnPossess();
+	if (IsValid(PawnToDestroy))
+	{
+		PawnToDestroy->Destroy();
+	}
+
+	RestartPlayerAtTransform(Controller, RespawnTransform);
+	if (!IsValid(Controller->GetPawn()))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Aura: failed to respawn player %s at %s."),
+			*GetNameSafe(Controller), *RespawnTransform.GetLocation().ToCompactString());
+		return;
+	}
+
+	if (AAuraPlayerState* AuraPlayerState = Controller->GetPlayerState<AAuraPlayerState>())
+	{
+		if (UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(AuraPlayerState->GetAbilitySystemComponent()))
+		{
+			if (const UAuraAttributeSet* Attributes = Cast<UAuraAttributeSet>(AuraPlayerState->GetAttributeSet()))
+			{
+				AuraASC->SetNumericAttributeBase(UAuraAttributeSet::GetHealthAttribute(),
+					Attributes->GetMaxHealth() * FMath::Clamp(RespawnHealthFraction, 0.f, 1.f));
+				AuraASC->SetNumericAttributeBase(UAuraAttributeSet::GetManaAttribute(),
+					Attributes->GetMaxMana() * FMath::Clamp(RespawnManaFraction, 0.f, 1.f));
+			}
+			AuraASC->ActivateEquippedPassiveAbilities();
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Aura: respawned player %s at %s."),
+		*GetNameSafe(Controller), *RespawnTransform.GetLocation().ToCompactString());
+}
+
 ULoadScreenSaveGame* AAuraGameModeBase::GetCurrentWorldSave() const
 {
 	const UAuraGameInstance* AuraGameInstance = Cast<UAuraGameInstance>(GetGameInstance());
@@ -477,6 +590,16 @@ bool AAuraGameModeBase::SaveCurrentWorldInternal()
 		const bool bHasSavedPlayerData = MapData.Players.IsValidIndex(PlayerIndex)
 			&& MapData.Players[PlayerIndex].bValid;
 		const bool bHasLegacyHostData = PlayerIndex == 0 && MapData.PlayerData.bValid;
+		if (PendingRespawnControllers.Contains(TWeakObjectPtr<AController>(PlayerController)))
+		{
+			if (!bHasSavedPlayerData && bHasLegacyHostData)
+			{
+				MapData.Players[PlayerIndex] = MapData.PlayerData;
+			}
+			UE_LOG(LogTemp, Warning,
+				TEXT("Aura: preserving player index=%d while waiting to respawn."), PlayerIndex);
+			continue;
+		}
 		if (!RestoredPlayerIndices.Contains(PlayerIndex) && (bHasSavedPlayerData || bHasLegacyHostData))
 		{
 			// A newly joined pawn still contains defaults until its delayed restore completes.
@@ -689,6 +812,7 @@ void AAuraGameModeBase::RestoreCurrentWorld()
 		}
 
 		RestoredPlayerIndices.Add(PlayerIndex);
+		PlayerRespawnTransforms.Add(TWeakObjectPtr<AController>(PlayerController), PlayerData->Transform);
 		UE_LOG(LogTemp, Log, TEXT("Aura: restored player index=%d location=%s level=%d xp=%d health=%.1f mana=%.1f abilities=%d."),
 			PlayerIndex,
 			*PlayerData->Transform.GetLocation().ToCompactString(),

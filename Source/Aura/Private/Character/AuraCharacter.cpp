@@ -9,6 +9,7 @@
 #include "AbilitySystem/AuraNiagaraComponent.h"
 #include "AbilitySystem/Data/LevelUpInfo.h"
 #include "AuraGameplayTags.h"
+#include "Game/AuraGameModeBase.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Player/AuraPlayerController.h"
 #include "Player/AuraPlayerState.h"
@@ -88,9 +89,23 @@ void AAuraCharacter::PossessedBy(AController* NewController)
 		*GetName(), *GetNameSafe(NewController), static_cast<int32>(GetNetMode()),
 		static_cast<int32>(GetLocalRole()), HasAuthority() ? 1 : 0);
 	
-	// Init ability actor info for the server
+	AAuraPlayerState* AuraPlayerState = GetPlayerState<AAuraPlayerState>();
+	const bool bNeedsInitialCharacterData = AuraPlayerState && !AuraPlayerState->HasInitializedCharacterData();
+
+	// Init ability actor info for the server. PlayerState owns the ASC, so a
+	// respawn only rebinds its avatar and must not grant persistent data twice.
 	InitAbilityActorInfo();
-	AddCharacterAbilities();
+	if (bNeedsInitialCharacterData)
+	{
+		AddCharacterAbilities();
+		AuraPlayerState->MarkCharacterDataInitialized();
+	}
+	else
+	{
+		// The ASC survives Pawn replacement. Death cancels all active abilities,
+		// including always-on startup listeners such as GA_ListenForEvent.
+		ReactivatePersistentCharacterAbilities();
+	}
 }
 
 void AAuraCharacter::OnRep_PlayerState()
@@ -99,6 +114,32 @@ void AAuraCharacter::OnRep_PlayerState()
 	
 	// Init ability actor info for the client
 	InitAbilityActorInfo();
+}
+
+void AAuraCharacter::Die()
+{
+	if (bDead)
+	{
+		return;
+	}
+
+	Super::Die();
+	if (HasAuthority())
+	{
+		if (AAuraGameModeBase* AuraGameMode = GetWorld()->GetAuthGameMode<AAuraGameModeBase>())
+		{
+			AuraGameMode->HandlePlayerDeath(this);
+		}
+	}
+}
+
+void AAuraCharacter::MulticastHandleDeath_Implementation()
+{
+	Super::MulticastHandleDeath_Implementation();
+	if (AAuraPlayerController* AuraPlayerController = Cast<AAuraPlayerController>(GetController()))
+	{
+		AuraPlayerController->HandleControlledPawnDeath();
+	}
 }
 
 void AAuraCharacter::RefreshAttributesAfterLoading()
@@ -209,7 +250,7 @@ void AAuraCharacter::InitAbilityActorInfo()
 	// Applying the default GameplayEffects again in OnRep_PlayerState creates
 	// client-only Health/Mana bases; the first predicted/replicated ability
 	// effect then recomputes them and makes the UI jump to those default values.
-	if (HasAuthority())
+	if (HasAuthority() && !AuraPlayerState->HasInitializedCharacterData())
 	{
 		InitializeDefaultAttributes();
 	}

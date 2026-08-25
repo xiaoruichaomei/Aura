@@ -50,6 +50,8 @@ public:
 	void SetSpellPoints(int32 InPoints);
 	void SetSaveRestoreInProgress(bool bInProgress);
 	bool IsSaveRestoreInProgress() const { return bSaveRestoreInProgress; }
+	bool HasInitializedCharacterData() const { return bCharacterDataInitialized; }
+	void MarkCharacterDataInitialized() { bCharacterDataInitialized = true; }
 	
 	FOnPlayerStatChanged OnXPChangedDelegate;
 	FOnPlayerStatChanged OnLevelChangedDelegate;
@@ -97,4 +99,7 @@ private:
 
 	UPROPERTY(ReplicatedUsing=OnRep_SaveRestoreInProgress)
 	bool bSaveRestoreInProgress = false;
+
+	/** Server-only gate because the ASC survives Pawn replacement. */
+	bool bCharacterDataInitialized = false;
 };

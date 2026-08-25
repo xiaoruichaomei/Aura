@@ -65,6 +65,9 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="Networking")
 	void ServerTravelToLoadMenu();
 
+	/** Stops local movement/targeting when the possessed character dies. */
+	void HandleControlledPawnDeath();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
