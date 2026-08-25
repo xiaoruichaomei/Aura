@@ -20,6 +20,7 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Net/UnrealNetwork.h"
+#include "Navigation/CrowdManager.h"
 #include "Subsystem/AuraEnemyPoolSubsystem.h"
 
 AAuraEnemy::AAuraEnemy()
@@ -48,6 +49,7 @@ void AAuraEnemy::BeginPlay()
 {
 	Super::BeginPlay();
 	CapturePoolDefaults();
+	UpdateClientCrowdRegistration(!bPoolManaged || PoolState == EEnemyPoolState::Active);
 	
 	GetMesh()->SetCustomDepthStencilValue(CUSTOM_DEPTH_RED);
 	Weapon->SetCustomDepthStencilValue(CUSTOM_DEPTH_RED);
@@ -176,6 +178,12 @@ void AAuraEnemy::StunTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
 	}
 }
 
+void AAuraEnemy::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UpdateClientCrowdRegistration(false);
+	Super::EndPlay(EndPlayReason);
+}
+
 void AAuraEnemy::EnsureStunAnimation()
 {
 	if (!bStunned || bDead || (bPoolManaged && PoolState != EEnemyPoolState::Active))
@@ -246,6 +254,7 @@ void AAuraEnemy::Die()
 
 void AAuraEnemy::MulticastHandleDeath_Implementation()
 {
+	UpdateClientCrowdRegistration(false);
 	GetWorldTimerManager().ClearTimer(StunAnimationTimer);
 	Super::MulticastHandleDeath_Implementation();
 	if (HealthBar)
@@ -527,6 +536,7 @@ void AAuraEnemy::SetPoolState(EEnemyPoolState NewState)
 void AAuraEnemy::OnRep_PoolState()
 {
 	const bool bActive = PoolState != EEnemyPoolState::Inactive;
+	UpdateClientCrowdRegistration(PoolState == EEnemyPoolState::Active);
 	if (PoolState == EEnemyPoolState::Active)
 	{
 		ResetPoolBlueprintState();
@@ -534,6 +544,47 @@ void AAuraEnemy::OnRep_PoolState()
 	}
 	SetActorHiddenInGame(!bActive);
 	SetActorEnableCollision(bActive);
+}
+
+FVector AAuraEnemy::GetCrowdAgentLocation() const
+{
+	return GetActorLocation();
+}
+
+FVector AAuraEnemy::GetCrowdAgentVelocity() const
+{
+	return GetVelocity();
+}
+
+void AAuraEnemy::GetCrowdAgentCollisions(float& CylinderRadius, float& CylinderHalfHeight) const
+{
+	GetCapsuleComponent()->GetScaledCapsuleSize(CylinderRadius, CylinderHalfHeight);
+}
+
+float AAuraEnemy::GetCrowdAgentMaxSpeed() const
+{
+	return GetCharacterMovement()->GetMaxSpeed();
+}
+
+void AAuraEnemy::UpdateClientCrowdRegistration(bool bShouldRegister)
+{
+	if (GetNetMode() != NM_Client || bClientCrowdRegistered == bShouldRegister)
+	{
+		return;
+	}
+
+	if (UCrowdManager* CrowdManager = UCrowdManager::GetCurrent(GetWorld()))
+	{
+		if (bShouldRegister)
+		{
+			CrowdManager->RegisterAgent(this);
+		}
+		else
+		{
+			CrowdManager->UnregisterAgent(this);
+		}
+		bClientCrowdRegistered = bShouldRegister;
+	}
 }
 
 void AAuraEnemy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

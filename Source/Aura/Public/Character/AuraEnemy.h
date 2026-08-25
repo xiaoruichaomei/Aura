@@ -7,6 +7,7 @@
 #include "AbilitySystem/Data/CharacterClassInfo.h"
 #include "Character/BaseCharacter.h"
 #include "Interface/EnemyInterface.h"
+#include "Navigation/CrowdAgentInterface.h"
 #include "UI/WidgetController/OverlayWidgetController.h"
 #include "AuraEnemy.generated.h"
 
@@ -32,13 +33,14 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FEnemyDyingSignature, AAuraEnemy*);
  * 
  */
 UCLASS()
-class AURA_API AAuraEnemy : public ABaseCharacter, public IEnemyInterface
+class AURA_API AAuraEnemy : public ABaseCharacter, public IEnemyInterface, public ICrowdAgentInterface
 {
 	GENERATED_BODY()
 	
 public:
 	AAuraEnemy();
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
@@ -78,6 +80,12 @@ public:
 	virtual void SetCombatTarget_Implementation(AActor* InCombatTarget) override;
 	virtual AActor* GetCombatTarget_Implementation() const override;
 	// </Combat Interface>
+
+	// Replicated enemy pawns act as avoidance agents on remote clients, where AI controllers do not exist.
+	virtual FVector GetCrowdAgentLocation() const override;
+	virtual FVector GetCrowdAgentVelocity() const override;
+	virtual void GetCrowdAgentCollisions(float& CylinderRadius, float& CylinderHalfHeight) const override;
+	virtual float GetCrowdAgentMaxSpeed() const override;
 	
 	UPROPERTY(BlueprintAssignable)
 	FOnAttributeChangedSignature OnHealthChanged;
@@ -151,10 +159,12 @@ protected:
 	TEnumAsByte<ECollisionEnabled::Type> InitialMeshCollisionEnabled = ECollisionEnabled::QueryOnly;
 	ERootMotionMode::Type InitialRootMotionMode = ERootMotionMode::RootMotionFromMontagesOnly;
 	bool bPoolDefaultsCaptured = false;
+	bool bClientCrowdRegistered = false;
 
 	void SetPoolState(EEnemyPoolState NewState);
 	void CapturePoolDefaults();
 	void ResetNativePoolState();
 	void UpdateRootMotionMode();
 	void EnsureStunAnimation();
+	void UpdateClientCrowdRegistration(bool bShouldRegister);
 };
