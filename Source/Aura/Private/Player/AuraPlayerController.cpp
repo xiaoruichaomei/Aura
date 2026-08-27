@@ -292,7 +292,17 @@ void AAuraPlayerController::ServerTravelToLoadMenu_Implementation()
 
 	if (AAuraGameModeBase* GameMode = GetWorld()->GetAuthGameMode<AAuraGameModeBase>())
 	{
-		GameMode->SaveAndReturnToMainMenu();
+		if (IsLocalController())
+		{
+			// The listen host owns the session, so leaving closes the current game
+			// for every connected player just as before.
+			GameMode->SaveAndReturnToMainMenu();
+		}
+		else
+		{
+			// A remote client's leave request must not travel the authoritative World.
+			GameMode->HandleRemotePlayerLeave(this);
+		}
 	}
 }
 

@@ -35,6 +35,8 @@ public:
 	void SaveAndReturnToMainMenu();
 	void RestoreCurrentWorld();
 	void HandlePlayerDeath(AAuraCharacter* DeadCharacter);
+	/** Saves the current snapshot and disconnects only the requesting remote client. */
+	void HandleRemotePlayerLeave(APlayerController* LeavingPlayer);
 	
 	UPROPERTY(EditDefaultsOnly, Category="Character Class Defaults")
 	TObjectPtr<UCharacterClassInfo> CharacterClassInfo;
@@ -58,6 +60,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+	virtual void Logout(AController* Exiting) override;
 
 private:
 	void ExecutePendingMapTravel();

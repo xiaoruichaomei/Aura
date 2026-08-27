@@ -410,6 +410,55 @@ void AAuraGameModeBase::PostLogin(APlayerController* NewPlayer)
 	}
 }
 
+void AAuraGameModeBase::Logout(AController* Exiting)
+{
+	if (HasAuthority() && IsValid(Exiting))
+	{
+		const TWeakObjectPtr<AController> ControllerKey(Exiting);
+		if (FTimerHandle* RespawnTimer = PlayerRespawnTimers.Find(ControllerKey))
+		{
+			GetWorldTimerManager().ClearTimer(*RespawnTimer);
+		}
+		PlayerRespawnTimers.Remove(ControllerKey);
+		PendingRespawnControllers.Remove(ControllerKey);
+		PlayerRespawnTransforms.Remove(ControllerKey);
+
+		Exiting->StopMovement();
+		if (AAuraPlayerState* AuraPlayerState = Exiting->GetPlayerState<AAuraPlayerState>())
+		{
+			if (UAuraAbilitySystemComponent* AuraASC =
+				Cast<UAuraAbilitySystemComponent>(AuraPlayerState->GetAbilitySystemComponent()))
+			{
+				AuraASC->CancelAllAbilities();
+				FGameplayTagContainer DebuffTags;
+				DebuffTags.AddTag(FAuraGameplayTags::Get().Effects_Debuff);
+				AuraASC->RemoveActiveEffectsWithTags(DebuffTags);
+			}
+		}
+
+		if (APawn* LeavingPawn = Exiting->GetPawn())
+		{
+			for (TActorIterator<AAuraEnemy> It(GetWorld()); It; ++It)
+			{
+				It->HandleTargetActorInvalidated(LeavingPawn);
+			}
+		}
+
+		if (APlayerController* LeavingPlayer = Cast<APlayerController>(Exiting))
+		{
+			const TWeakObjectPtr<APlayerController> PlayerKey(LeavingPlayer);
+			if (const int32* PlayerIndex = PlayerSaveIndices.Find(PlayerKey))
+			{
+				// A reconnect using this session slot must be restored again.
+				RestoredPlayerIndices.Remove(*PlayerIndex);
+			}
+			PlayerSaveIndices.Remove(PlayerKey);
+		}
+	}
+
+	Super::Logout(Exiting);
+}
+
 void AAuraGameModeBase::HandlePlayerDeath(AAuraCharacter* DeadCharacter)
 {
 	if (!HasAuthority() || !IsValid(DeadCharacter))
@@ -830,6 +879,24 @@ void AAuraGameModeBase::SaveAndReturnToMainMenu()
 	// Relative travel preserves the active listen address and PIE port so the
 	// connected client can follow and remain in the same session.
 	GetWorld()->ServerTravel(TEXT("/Game/Maps/MainMenu"), false);
+}
+
+void AAuraGameModeBase::HandleRemotePlayerLeave(APlayerController* LeavingPlayer)
+{
+	if (!HasAuthority() || !IsValid(LeavingPlayer) || LeavingPlayer->IsLocalController())
+	{
+		return;
+	}
+
+	// Capture this player's latest authoritative state while its Pawn and
+	// PlayerState are still valid. The subsequent disconnect is client-only;
+	// the listen server World must keep running for the remaining players.
+	const bool bSaved = SaveCurrentWorldInternal();
+	UE_LOG(LogTemp, Log, TEXT("Aura: remote player %s leaving session; snapshot=%s."),
+		*GetNameSafe(LeavingPlayer), bSaved ? TEXT("Saved") : TEXT("Unavailable"));
+
+	LeavingPlayer->StopMovement();
+	LeavingPlayer->ClientReturnToMainMenuWithTextReason(FText::GetEmpty());
 }
 
 void AAuraGameModeBase::EnsureDefaultEnemySpawner()

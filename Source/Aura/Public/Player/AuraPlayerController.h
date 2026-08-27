@@ -73,7 +73,7 @@ public:
 	UFUNCTION(Client, Unreliable)
 	void ClientSetAutoMoveSteering(FVector_NetQuantize10 SteeringVelocity);
 
-	/** Requests the listen server to save and move every connected player to MainMenu. */
+	/** Remote clients leave alone; the listen host saves and returns everyone to MainMenu. */
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="Networking")
 	void ServerTravelToLoadMenu();
 
