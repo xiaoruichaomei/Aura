@@ -30,6 +30,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PawnMovementComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Game/AuraGameModeBase.h"
 #include "NiagaraFunctionLibrary.h"
 #include "UI/Widget/DamageTextComponent.h"
@@ -68,6 +69,7 @@ AAuraPlayerController::AAuraPlayerController()
 void AAuraPlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	UpdateViewRotation(DeltaSeconds);
 	CursorTrace();
 	UpdateMagicCircleLocation();
 	AutoRun(DeltaSeconds);
@@ -135,6 +137,14 @@ void AAuraPlayerController::SetupInputComponent()
 
 	AuraInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AAuraPlayerController::Move);
 	AuraInputComponent->BindAction(CameraSnapAction, ETriggerEvent::Triggered, this, &AAuraPlayerController::SnapCameraToPlayer);
+	// Q/E rotate the local top-down view by one quarter turn. These are bound
+	// directly so the feature does not require changing the project's input
+	// assets or accidentally treating the keys as gameplay ability input.
+	// EnhancedInputComponent disables its own BindKey overload in UE 5.8;
+	// explicitly use the inherited legacy key binding API for these two simple
+	// key-edge actions alongside the existing Enhanced Input actions.
+	InputComponent->BindKey(EKeys::Q, EInputEvent::IE_Pressed, this, &AAuraPlayerController::RotateViewLeft);
+	InputComponent->BindKey(EKeys::E, EInputEvent::IE_Pressed, this, &AAuraPlayerController::RotateViewRight);
 	AuraInputComponent->BindAbilityActions(InputConfig, this, &ThisClass::AbilityInputTagPressed, &ThisClass::AbilityInputTagReleased, &ThisClass::AbilityInputTagHeld);
 }
 
@@ -1376,6 +1386,76 @@ bool AAuraPlayerController::GetAutoRunPathLength(const FVector& Start, const FVe
 void AAuraPlayerController::SnapCameraToPlayer()
 {
 	// 按下空格：把相机拉到玩家当前相机位置
+	UpdateFixedCameraToPlayer();
+}
+
+void AAuraPlayerController::RotateViewLeft()
+{
+	RotateView(-90.f);
+}
+
+void AAuraPlayerController::RotateViewRight()
+{
+	RotateView(90.f);
+}
+
+void AAuraPlayerController::RotateView(float YawDelta)
+{
+	if (!IsLocalController() || !GetPawn())
+	{
+		return;
+	}
+
+	USpringArmComponent* CameraBoom = GetPawn()->FindComponentByClass<USpringArmComponent>();
+	if (!IsValid(CameraBoom))
+	{
+		return;
+	}
+
+	// Accumulate against the current target so repeated presses during the
+	// transition still represent repeated quarter-turns.
+	if (!bViewRotationInProgress)
+	{
+		TargetViewRotation = CameraBoom->GetComponentRotation();
+	}
+	TargetViewRotation.Yaw = FRotator::NormalizeAxis(TargetViewRotation.Yaw + YawDelta);
+	bViewRotationInProgress = true;
+}
+
+void AAuraPlayerController::UpdateViewRotation(float DeltaSeconds)
+{
+	if (!bViewRotationInProgress || !IsLocalController() || !GetPawn())
+	{
+		return;
+	}
+
+	USpringArmComponent* CameraBoom = GetPawn()->FindComponentByClass<USpringArmComponent>();
+	if (!IsValid(CameraBoom))
+	{
+		bViewRotationInProgress = false;
+		return;
+	}
+
+	const FRotator CurrentRotation = CameraBoom->GetComponentRotation();
+	const FRotator NewRotation = FMath::RInterpTo(
+		CurrentRotation, TargetViewRotation, DeltaSeconds, ViewRotationInterpSpeed);
+	CameraBoom->SetWorldRotation(NewRotation);
+
+	// Move() converts input through ControlRotation. Keep it synchronized with
+	// the interpolated camera so movement remains relative to the visible view.
+	SetControlRotation(NewRotation);
+
+	if (FMath::IsNearlyEqual(
+		FRotator::NormalizeAxis(NewRotation.Yaw),
+		FRotator::NormalizeAxis(TargetViewRotation.Yaw), 0.05f))
+	{
+		CameraBoom->SetWorldRotation(TargetViewRotation);
+		SetControlRotation(TargetViewRotation);
+		bViewRotationInProgress = false;
+	}
+
+	// GetPlayerViewPoint() uses a cached camera transform for cursor
+	// deprojection, so refresh it throughout the transition.
 	UpdateFixedCameraToPlayer();
 }
 

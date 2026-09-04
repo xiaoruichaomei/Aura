@@ -6,6 +6,9 @@ DerivedDataCache/
 Build/
 /Data/
 /Docs/
+!/Docs/
+/Docs/*
+!/Docs/Aura_项目面试八股.md
 /.codex/
 .vs/
 *.sln

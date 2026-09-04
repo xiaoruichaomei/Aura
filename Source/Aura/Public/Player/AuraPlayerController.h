@@ -136,6 +136,10 @@ private:
 	bool IsInputBlocked() const;
 	
 	void SnapCameraToPlayer();
+	void RotateViewLeft();
+	void RotateViewRight();
+	void RotateView(float YawDelta);
+	void UpdateViewRotation(float DeltaSeconds);
 	
 	virtual void GetPlayerViewPoint(FVector& Location, FRotator& Rotation) const override;
 	
@@ -248,6 +252,13 @@ private:
 
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> CameraSnapAction;
+
+	/** Interpolation speed used when rotating the top-down view with Q/E. */
+	UPROPERTY(EditDefaultsOnly, Category="Camera", meta=(ClampMin="0.1"))
+	float ViewRotationInterpSpeed = 8.f;
+
+	FRotator TargetViewRotation = FRotator::ZeroRotator;
+	bool bViewRotationInProgress = false;
 	// </相机控制>
 	
 	UPROPERTY(EditDefaultsOnly)
