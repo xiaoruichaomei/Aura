@@ -19,6 +19,23 @@
 - 玩家死亡后替换 Pawn 并复用 PlayerState 中的角色数据；复活点占用时搜索最近安全 NavMesh 位置。
 - 敌人、普通投射物和 FireBlast 火球对象池，减少持续战斗中的频繁 Spawn/Destroy。
 
+## 游戏展示
+
+1. 进入游戏
+
+https://github.com/user-attachments/assets/639b3b05-bc0b-42d3-85b2-76093efa1ca5
+
+2. 技能：火球/闪电链/奥术地刺/火球爆裂
+
+https://github.com/user-attachments/assets/b6d19a8f-230a-4e78-a90b-ba1b7328b0c0
+
+
+
+
+
+
+
+
 ## 架构概览
 
 ```mermaid
