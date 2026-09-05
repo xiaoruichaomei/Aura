@@ -21,20 +21,157 @@
 
 ## 游戏展示
 
-1. 进入游戏
+1. 游戏进程
+
+<details>
+<summary>进入游戏</summary>
 
 https://github.com/user-attachments/assets/639b3b05-bc0b-42d3-85b2-76093efa1ca5
 
-2. 技能：火球/闪电链/奥术地刺/火球爆裂
+</details>
+<details>
+<summary>怪物生成</summary>
+
+https://github.com/user-attachments/assets/d64b62e8-26ff-4988-ba90-36ae56b23d30
+
+</details>
+<details>
+<summary>重生</summary>
+
+https://github.com/user-attachments/assets/52907093-11d1-445e-9e89-eb8bd014fdd0
+
+</details>
+
+2. 操控
+
+<details>
+<summary>转向</summary>
+
+https://github.com/user-attachments/assets/3e704be7-5bf5-4aab-bc7d-0818a529ccdf
+
+</details>
+<details>
+<summary>遮挡物虚化</summary>
+
+https://github.com/user-attachments/assets/f0bbb7ba-9012-4c57-a12a-aaebf1147353
+
+</details>
+<details>
+<summary>遮挡物虚化</summary>
+
+https://github.com/user-attachments/assets/f0bbb7ba-9012-4c57-a12a-aaebf1147353
+
+</details>
+<details>
+<summary>自动寻路与避障</summary>
+
+https://github.com/user-attachments/assets/b335b8ec-4992-4fed-8f51-e4b7a47f79a4
+
+</details>
+
+3. 技能
+<details>
+<summary>火球</summary>
 
 https://github.com/user-attachments/assets/b6d19a8f-230a-4e78-a90b-ba1b7328b0c0
 
+</details>
+<details>
+<summary>闪电链</summary>
 
+https://github.com/user-attachments/assets/696475ef-ffee-487d-a55d-74fa91958659
 
+</details>
+<details>
+<summary>奥术地刺</summary>
 
+https://github.com/user-attachments/assets/8fba1a7f-8bb5-4f01-b76b-a156a0646518
 
+</details>
+<details>
+<summary>火球爆裂</summary>
 
+https://github.com/user-attachments/assets/8d271ea6-c77f-4f95-ac64-0946ecb39ec3
 
+</details>
+<details>
+<summary>技能升级与装备</summary>
+
+https://github.com/user-attachments/assets/057c33cc-8729-4c59-a88a-7acbaf1b20ec
+
+</details>
+<details>
+<summary>升级后的火球</summary>
+
+https://github.com/user-attachments/assets/23c9f339-9cb6-44fb-9601-647d9ef403b5
+
+</details>
+<details>
+<summary>被动技能</summary>
+
+https://github.com/user-attachments/assets/d8237ab8-ffc6-4a30-b641-4ceecabdc816
+
+</details>
+<details>
+<summary>护盾与吸血</summary>
+
+https://github.com/user-attachments/assets/fa0064de-95eb-4bca-86eb-63b135c95615
+
+</details>
+
+4. 属性与场地
+
+<details>
+<summary>属性面板与加点</summary>
+
+https://github.com/user-attachments/assets/3f478f43-0b3f-44d1-b5e0-0777db9e8c91
+
+</details>
+<details>
+<summary>火焰区域</summary>
+
+https://github.com/user-attachments/assets/b631e77b-af21-425d-9fad-1d4e059d5a3d
+
+</details>
+<details>
+<summary>拾取物</summary>
+
+https://github.com/user-attachments/assets/09fbf064-06bd-4e2d-a46b-0d1ac379cd07
+
+</details>
+
+5. 多人游戏
+
+<details>
+<summary>进入游戏</summary>
+
+https://github.com/user-attachments/assets/d66733e1-1f10-4e88-a05b-982561175f09
+
+</details>
+<details>
+<summary>双端同步1</summary>
+
+https://github.com/user-attachments/assets/d99d5b18-4d0e-4a44-8601-7e4cb2890d69
+
+</details>
+<details>
+<summary>双端同步2</summary>
+
+https://github.com/user-attachments/assets/cc957314-7866-4e66-b876-d95bd5531697
+
+</details>
+<details>
+<summary>双端同步3</summary>
+
+https://github.com/user-attachments/assets/96845e99-a39b-44fa-8667-bf1a112f3fb5
+
+</details>
+<details>
+<summary>存档读档</summary>
+
+https://github.com/user-attachments/assets/6a0bebea-9e41-492a-bee9-4d75692a3e31
+
+</details>
 
 ## 架构概览
 
@@ -51,7 +188,7 @@ flowchart LR
     ASC --> WC[Widget Controllers]
     PS --> WC
     WC --> HUD[UMG HUD and Menus]
-    GM[AuraGameModeBase] --> Save[SaveGame v3]
+    GM[AuraGameModeBase] --> Save[SaveGame]
     GM --> Spawn[Spawner and Enemy Pool]
     Nav[NavMesh + Crowd + EQS] --> PC
 ```
@@ -111,7 +248,7 @@ GameplayAbility
 
 ## 存档系统
 
-`SaveGame v3` 不只保存一个玩家数值，而是保存当前联机世界快照：
+`SaveGame` 不只保存一个玩家数值，而是保存当前联机世界快照：
 
 ```text
 Save Slot
@@ -169,49 +306,8 @@ Aura/
 
 - Windows 10/11
 - Unreal Engine 5.8
-- Visual Studio 2022，安装“使用 C++ 的游戏开发”和对应 Windows SDK
+- Rider
 - Git LFS
-
-克隆仓库后先拉取 LFS 资源：
-
-```powershell
-git clone git@github.com:yuedianchaomei/Aura.git
-Set-Location Aura
-git lfs pull
-```
-
-设置本机 UE 路径并生成工程文件：
-
-```powershell
-$env:AURA_UE_ROOT = "C:\Path\To\UE_5.8"
-& "$env:AURA_UE_ROOT\Engine\Build\BatchFiles\GenerateProjectFiles.bat" `
-  -project="$PWD\Aura.uproject" -game -engine
-```
-
-命令行编译 Editor Target：
-
-```powershell
-& "$env:AURA_UE_ROOT\Engine\Build\BatchFiles\Build.bat" `
-  AuraEditor Win64 Development "$PWD\Aura.uproject" -WaitMutex
-```
-
-也可以双击 `Aura.uproject`，让 Unreal Editor 生成并编译缺失模块。默认入口地图为 `/Game/Maps/MainMenu`。
-
-## Windows 打包
-
-在 Unreal Editor 中执行：
-
-```text
-Platforms -> Windows -> Package Project
-```
-
-工程已将以下地图加入 Cook 列表：
-
-- `/Game/Maps/MainMenu`
-- `/Game/Maps/LoadMenu`
-- `/Game/Maps/Dungeon`
-
-首次打包前应确认所有 Blueprint 编译通过，并使用 `Development` 配置保留必要日志进行双端验证。打包设置已启用 Pak、IoStore、Oodle 压缩和运行库先决条件。
 
 ## 局域网联机
 
